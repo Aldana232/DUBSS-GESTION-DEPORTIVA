@@ -1,8 +1,9 @@
 "use client";
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import axios from "axios";
 import Cookies from "js-cookie";
-import api from "@/lib/api/client";
+import api, { guardarTokens } from "@/lib/api/client";
 import { jwtDecode } from "jwt-decode";
 
 function LoginForm() {
@@ -29,11 +30,22 @@ function LoginForm() {
     setError(""); setLoading(true);
     try {
       const { data } = await api.post("/auth/login/", { email, password: pass });
-      Cookies.set("access_token",  data.access,  { expires: 1/24 });
-      Cookies.set("refresh_token", data.refresh, { expires: 7 });
+      guardarTokens(data.access, data.refresh);
       router.push(redirect);
-    } catch {
-      setError("Credenciales incorrectas. Verifica tu email y contraseña.");
+    } catch (loginError: unknown) {
+      if (
+        axios.isAxiosError<{ detail?: unknown }>(loginError) &&
+        loginError.response?.status === 429
+      ) {
+        const detail = loginError.response.data?.detail;
+        setError(
+          typeof detail === "string"
+            ? detail
+            : "Demasiados intentos de inicio de sesión. Intenta de nuevo más tarde.",
+        );
+      } else {
+        setError("Credenciales incorrectas. Verifica tu email y contraseña.");
+      }
     } finally { setLoading(false); }
   };
 

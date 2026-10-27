@@ -3,7 +3,7 @@ apps/users/permissions.py
 Permisos basados en roles del sistema DUBSS.
 """
 from rest_framework.permissions import BasePermission
-from .models import Usuario
+from .roles import es_admin, es_arbitro, es_organizador
 
 
 class EsAdminDUBSS(BasePermission):
@@ -11,11 +11,7 @@ class EsAdminDUBSS(BasePermission):
     message = "Requiere rol de Administrador DUBSS."
 
     def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
-            and request.user.rol == Usuario.Rol.ADMIN_DUBSS
-        )
+        return es_admin(request.user)
 
 
 class EsCoordinadorOAdmin(BasePermission):
@@ -23,14 +19,7 @@ class EsCoordinadorOAdmin(BasePermission):
     message = "Requiere rol de Coordinador o Administrador DUBSS."
 
     def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
-            and request.user.rol in (
-                Usuario.Rol.ADMIN_DUBSS,
-                Usuario.Rol.COORDINADOR,
-            )
-        )
+        return es_admin(request.user) or es_organizador(request.user)
 
 
 class EsArbitroOAdmin(BasePermission):
@@ -38,23 +27,14 @@ class EsArbitroOAdmin(BasePermission):
     message = "Requiere rol de Árbitro o Administrador DUBSS."
 
     def has_permission(self, request, view):
-        return (
-            request.user
-            and request.user.is_authenticated
-            and request.user.rol in (
-                Usuario.Rol.ADMIN_DUBSS,
-                Usuario.Rol.ARBITRO,
-            )
-        )
+        return es_admin(request.user) or es_arbitro(request.user)
 
 
 class EsDeportistaPropioOAdmin(BasePermission):
     """Un deportista solo puede ver/editar su propio perfil; admin puede todo."""
 
     def has_object_permission(self, request, view, obj):
-        if request.user.rol == Usuario.Rol.ADMIN_DUBSS:
-            return True
-        return obj == request.user
+        return es_admin(request.user) or obj == request.user
 
 
 class EsLecturaPublica(BasePermission):

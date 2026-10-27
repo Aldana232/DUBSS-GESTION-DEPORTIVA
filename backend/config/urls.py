@@ -25,6 +25,7 @@ urlpatterns = [
     path(API_V1 + "deportes/",       include("apps.deportes.urls")),
     path(API_V1 + "instalaciones/",  include("apps.instalaciones.urls")),
     path(API_V1 + "fixture/",        include("apps.fixture.urls")),
+    path(API_V1 + "auditoria/",     include("apps.auditoria.urls")),
     path(API_V1 + "ml/",             include("apps.ml.urls")),
     path(API_V1 + "notificaciones/", include("apps.notificaciones.urls")),
     path(API_V1 + "reportes/",       include("apps.reportes.urls")),

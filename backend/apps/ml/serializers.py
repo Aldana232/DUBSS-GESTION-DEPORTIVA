@@ -3,8 +3,7 @@ apps/ml/serializers.py
 Serializers para predicciones, riesgos climáticos y bitácora.
 """
 from rest_framework import serializers
-from apps.users.serializers import UsuarioResumenSerializer
-from .models import PrediccionPartido, PrediccionAsistencia, RiesgoClimatico, Bitacora
+from .models import PrediccionPartido, PrediccionAsistencia, RiesgoClimatico
 
 
 class PrediccionPartidoSerializer(serializers.ModelSerializer):
@@ -44,16 +43,6 @@ class RiesgoClimaticoSerializer(serializers.ModelSerializer):
         fields = ["id", "partido", "nivel_riesgo", "temperatura",
                   "precipitacion", "viento", "descripcion",
                   "recomendacion", "fuente_api", "consultado_en"]
-        read_only_fields = fields
-
-
-class BitacoraSerializer(serializers.ModelSerializer):
-    usuario_detalle = UsuarioResumenSerializer(source="usuario", read_only=True)
-
-    class Meta:
-        model  = Bitacora
-        fields = ["id", "usuario", "usuario_detalle", "accion", "modulo",
-                  "descripcion", "objeto_id", "ip_address", "timestamp"]
         read_only_fields = fields
 
 

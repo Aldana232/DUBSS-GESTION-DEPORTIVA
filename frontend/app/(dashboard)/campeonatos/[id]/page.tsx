@@ -155,7 +155,7 @@ export default function CampeonatoDetallePage() {
                        padding:"32px",textAlign:"center",color:"#9ca3af"}}>
             <p style={{fontSize:"36px",marginBottom:"8px"}}>📅</p>
             <p style={{fontSize:"13px"}}>No hay fixture generado.</p>
-            {esCoord && <p style={{fontSize:"12px",marginTop:"4px"}}>Usa el botón "Generar fixture" arriba.</p>}
+            {esCoord && <p style={{fontSize:"12px",marginTop:"4px"}}>Usa el botón &quot;Generar fixture&quot; arriba.</p>}
           </div>
         ) : (
           <div style={{backgroundColor:"white",borderRadius:"12px",border:"1px solid #e5e7eb",overflow:"hidden"}}>

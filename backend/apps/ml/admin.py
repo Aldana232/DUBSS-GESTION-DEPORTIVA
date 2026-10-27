@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import PrediccionPartido, PrediccionAsistencia, RiesgoClimatico, Bitacora
+from .models import PrediccionPartido, RiesgoClimatico
 
 
 @admin.register(PrediccionPartido)
@@ -14,12 +14,3 @@ class RiesgoClimaticoAdmin(admin.ModelAdmin):
     list_display  = ["partido", "nivel_riesgo", "temperatura",
                      "precipitacion", "consultado_en"]
     list_filter   = ["nivel_riesgo"]
-
-
-@admin.register(Bitacora)
-class BitacoraAdmin(admin.ModelAdmin):
-    list_display  = ["timestamp", "usuario", "accion", "modulo", "objeto_id"]
-    list_filter   = ["accion", "modulo"]
-    search_fields = ["descripcion", "usuario__email"]
-    readonly_fields = ["timestamp", "ip_address"]
-    date_hierarchy  = "timestamp"

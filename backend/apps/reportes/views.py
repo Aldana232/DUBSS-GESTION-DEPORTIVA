@@ -10,6 +10,8 @@ from rest_framework import status
 from drf_spectacular.utils import extend_schema
 from django.http import HttpResponse
 
+from apps.auditoria.models import Bitacora
+from apps.auditoria.services import registrar
 from apps.users.permissions import EsCoordinadorOAdmin, EsLecturaPublica
 from apps.deportes.models import Campeonato
 from apps.fixture.models import Partido, TablaPosiciones
@@ -136,6 +138,14 @@ class ReportePDFView(APIView):
         nombre = f"reporte_{campeonato.nombre.replace(' ', '_')}.pdf"
         response = HttpResponse(buf, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="{nombre}"'
+        registrar(
+            Bitacora.Accion.EXPORTAR,
+            request=request,
+            entidad="campeonato",
+            entidad_id=campeonato.pk,
+            descripcion="Reporte del campeonato exportado en PDF.",
+            detalle={"formato": "PDF"},
+        )
         return response
 
 
@@ -226,4 +236,12 @@ class ReporteExcelView(APIView):
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         response["Content-Disposition"] = f'attachment; filename="{nombre}"'
+        registrar(
+            Bitacora.Accion.EXPORTAR,
+            request=request,
+            entidad="campeonato",
+            entidad_id=campeonato.pk,
+            descripcion="Reporte del campeonato exportado en Excel.",
+            detalle={"formato": "Excel"},
+        )
         return response

@@ -58,6 +58,8 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     # ── Estado ───────────────────────────────────────────────────────────────
     is_active       = models.BooleanField(default=True,  verbose_name="activo")
     is_staff        = models.BooleanField(default=False, verbose_name="staff")
+    intentos_fallidos = models.PositiveSmallIntegerField(default=0)
+    bloqueado_hasta = models.DateTimeField(null=True, blank=True)
 
     # ── Auditoría ────────────────────────────────────────────────────────────
     fecha_registro  = models.DateTimeField(default=timezone.now, verbose_name="fecha de registro")
@@ -87,12 +89,18 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     # ── Helpers de roles ─────────────────────────────────────────────────────
     @property
     def es_admin(self):
-        return self.rol == self.Rol.ADMIN_DUBSS
+        from .roles import es_admin
+
+        return es_admin(self)
 
     @property
     def es_coordinador(self):
-        return self.rol in (self.Rol.ADMIN_DUBSS, self.Rol.COORDINADOR)
+        from .roles import es_admin, es_organizador
+
+        return es_admin(self) or es_organizador(self)
 
     @property
     def es_arbitro(self):
-        return self.rol == self.Rol.ARBITRO
+        from .roles import es_arbitro
+
+        return es_arbitro(self)

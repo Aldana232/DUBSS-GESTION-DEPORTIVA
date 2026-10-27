@@ -8,20 +8,21 @@ CU19 — Bitácora
 CU20 — Predicción de asistencia
 """
 import requests
-from rest_framework import generics, status
+from rest_framework import status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from django.conf import settings
 
+from apps.auditoria.models import Bitacora
+from apps.auditoria.services import registrar
 from apps.users.permissions import EsAdminDUBSS, EsLecturaPublica
 from apps.fixture.models import Partido
-from .models import PrediccionPartido, PrediccionAsistencia, RiesgoClimatico, Bitacora
+from .models import PrediccionPartido, PrediccionAsistencia
 from .serializers import (
     PrediccionPartidoSerializer, PrediccionAsistenciaSerializer,
-    RiesgoClimaticoSerializer, BitacoraSerializer,
-    TableroPrediccionesSerializer,
+    RiesgoClimaticoSerializer,
 )
 from .services.predictor import PredictorResultados
 from .services.clima import ServicioClima
@@ -78,6 +79,14 @@ class TableroPrediccionesView(APIView):
                 "confianza":         round(pred.confianza * 100, 1),
             })
 
+        registrar(
+            Bitacora.Accion.ML_PRED,
+            request=request,
+            entidad="campeonato",
+            entidad_id=campeonato_id,
+            descripcion="Predicciones del campeonato consultadas.",
+            detalle={"partidos": len(resultado)},
+        )
         return Response(resultado)
 
 
@@ -99,6 +108,13 @@ class PrediccionPartidoView(APIView):
                             status=status.HTTP_404_NOT_FOUND)
 
         pred = PredictorResultados().predecir(partido)
+        registrar(
+            Bitacora.Accion.ML_PRED,
+            request=request,
+            entidad="partido",
+            entidad_id=partido.pk,
+            descripcion="Predicción del resultado del partido generada.",
+        )
         return Response(PrediccionPartidoSerializer(pred).data)
 
 
@@ -120,6 +136,13 @@ class RiesgoClimaticoView(APIView):
                             status=status.HTTP_404_NOT_FOUND)
 
         riesgo = ServicioClima().consultar(partido)
+        registrar(
+            Bitacora.Accion.ML_PRED,
+            request=request,
+            entidad="partido",
+            entidad_id=partido.pk,
+            descripcion="Pronóstico de riesgo climático consultado.",
+        )
         return Response(RiesgoClimaticoSerializer(riesgo).data)
 
 
@@ -158,6 +181,13 @@ class PrediccionAsistenciaView(APIView):
                     "jornada":          partido.jornada,
                 },
             },
+        )
+        registrar(
+            Bitacora.Accion.ML_PRED,
+            request=request,
+            entidad="partido",
+            entidad_id=partido.pk,
+            descripcion="Predicción de asistencia generada.",
         )
         return Response(PrediccionAsistenciaSerializer(pred).data)
 
@@ -219,21 +249,6 @@ class RecomendacionesView(APIView):
             )
 
 
-# ── CU19 — Bitácora ────────────────────────────────────────────────────────────
-
-@extend_schema(tags=["ml"])
-class BitacoraListView(generics.ListAPIView):
-    """CU19 — Consulta del registro de auditoría del sistema."""
-    serializer_class   = BitacoraSerializer
-    permission_classes = [EsAdminDUBSS]
-    filterset_fields   = ["accion", "modulo", "usuario"]
-    search_fields      = ["descripcion", "modulo"]
-    ordering_fields    = ["timestamp"]
-
-    def get_queryset(self):
-        return Bitacora.objects.select_related("usuario").order_by("-timestamp")
-
-
 # ── Entrenamiento del modelo ML ────────────────────────────────────────────────
 
 @extend_schema(tags=["ml"])
@@ -251,4 +266,23 @@ class EntrenarModeloView(APIView):
             return Response({"error": "campeonato_id requerido."},
                             status=status.HTTP_400_BAD_REQUEST)
         resultado = PredictorResultados().entrenar(campeonato_id)
+        registrar(
+            Bitacora.Accion.ML_PRED,
+            request=request,
+            entidad="campeonato",
+            entidad_id=campeonato_id,
+            descripcion=(
+                "Entrenamiento del modelo de resultados fallido."
+                if "error" in resultado
+                else "Modelo de resultados entrenado."
+            ),
+            detalle={
+                "partidos_entrenados": resultado.get("partidos_entrenados", 0),
+            },
+            resultado=(
+                Bitacora.Resultado.ERROR
+                if "error" in resultado
+                else Bitacora.Resultado.OK
+            ),
+        )
         return Response(resultado)

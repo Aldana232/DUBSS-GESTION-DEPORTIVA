@@ -10,6 +10,7 @@ env = environ.Env()
 DEBUG = False
 
 ALLOWED_HOSTS = env.list("DJANGO_ALLOWED_HOSTS")
+CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 
 # Seguridad en producción
 SECURE_SSL_REDIRECT            = True

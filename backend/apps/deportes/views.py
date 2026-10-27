@@ -8,6 +8,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema
 
+from apps.auditoria.models import Bitacora
+from apps.auditoria.services import registrar
 from apps.users.permissions import EsAdminDUBSS, EsCoordinadorOAdmin, EsLecturaPublica
 from .models import Deporte, Categoria, Campeonato, Equipo, FichaJugador
 from .serializers import (
@@ -72,6 +74,7 @@ class CampeonatoViewSet(viewsets.ModelViewSet):
             permission_classes=[EsCoordinadorOAdmin])
     def cambiar_estado(self, request, pk=None):
         campeonato = self.get_object()
+        anterior = campeonato.estado
         nuevo      = request.data.get("estado")
         opciones   = [c[0] for c in Campeonato.Estado.choices]
         if nuevo not in opciones:
@@ -81,6 +84,15 @@ class CampeonatoViewSet(viewsets.ModelViewSet):
             )
         campeonato.estado = nuevo
         campeonato.save(update_fields=["estado"])
+        if anterior != nuevo:
+            registrar(
+                Bitacora.Accion.CAMBIO_ESTADO,
+                request=request,
+                entidad="campeonato",
+                entidad_id=campeonato.pk,
+                descripcion="Estado del campeonato actualizado.",
+                detalle={"anterior": anterior, "nuevo": nuevo},
+            )
         return Response({"estado": nuevo, "mensaje": "Estado actualizado."})
 
 

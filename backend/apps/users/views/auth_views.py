@@ -5,42 +5,53 @@ Vistas de autenticación: registro, login JWT, refresh, logout.
 from rest_framework import status, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
-from drf_spectacular.utils import extend_schema, OpenApiExample
+from rest_framework_simplejwt.token_blacklist.models import (
+    BlacklistedToken,
+    OutstandingToken,
+)
+from drf_spectacular.utils import extend_schema
+from django.db import transaction
 
+from apps.auditoria.models import Bitacora
+from apps.auditoria.services import registrar
 from ..serializers import (
-    UsuarioRegistroSerializer,
+    UsuarioAdminCreateSerializer,
     TokenPersonalizadoSerializer,
     CambioPasswordSerializer,
 )
+from ..permissions import EsAdminDUBSS
+from ..throttles import LoginRateThrottle
+from ..exceptions import ThrottledES
 
 
-@extend_schema(tags=["auth"])
+@extend_schema(
+    tags=["auth"],
+    description="Alta de cuenta por el administrador (RF2). El registro público está cerrado.",
+)
 class RegistroView(generics.CreateAPIView):
-    """
-    CU01 — Registro de nuevo usuario.
-    Devuelve los tokens JWT al registrarse exitosamente.
-    """
-    serializer_class = UsuarioRegistroSerializer
-    permission_classes = [AllowAny]
+    """Alta de cuenta por el administrador (RF2). El registro público está cerrado."""
+    serializer_class = UsuarioAdminCreateSerializer
+    permission_classes = [EsAdminDUBSS]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-
-        # Generar tokens automáticamente al registrarse
-        refresh = RefreshToken.for_user(user)
+        usuario = serializer.save()
+        registrar(
+            Bitacora.Accion.CREAR,
+            request=request,
+            entidad="usuario",
+            entidad_id=usuario.pk,
+            descripcion="Usuario creado por un administrador.",
+            detalle={"rol": usuario.rol},
+        )
         return Response(
             {
                 "mensaje":  "Usuario registrado exitosamente.",
                 "usuario":  serializer.data,
-                "tokens": {
-                    "refresh": str(refresh),
-                    "access":  str(refresh.access_token),
-                },
             },
             status=status.HTTP_201_CREATED,
         )
@@ -52,6 +63,16 @@ class LoginView(TokenObtainPairView):
     CU01 — Login. Devuelve access + refresh token con datos del usuario.
     """
     serializer_class = TokenPersonalizadoSerializer
+    throttle_classes = [LoginRateThrottle]
+
+    def throttled(self, request, wait):
+        raise ThrottledES(
+            wait=wait,
+            detail=(
+                "Demasiados intentos de inicio de sesión desde esta red. "
+                "Intenta de nuevo en unos minutos."
+            ),
+        )
 
 
 @extend_schema(tags=["auth"])
@@ -71,6 +92,11 @@ class LogoutView(APIView):
             refresh_token = request.data["refresh"]
             token = RefreshToken(refresh_token)
             token.blacklist()
+            registrar(
+                Bitacora.Accion.LOGOUT,
+                request=request,
+                descripcion="Cierre de sesión correcto.",
+            )
             return Response(
                 {"mensaje": "Sesión cerrada correctamente."},
                 status=status.HTTP_200_OK,
@@ -80,9 +106,9 @@ class LogoutView(APIView):
                 {"error": "Se requiere el refresh token."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        except Exception as e:
+        except Exception:
             return Response(
-                {"error": str(e)},
+                {"error": "El token de actualización no es válido o ya expiró."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -105,13 +131,30 @@ class CambioPasswordView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        user.set_password(serializer.validated_data["password_nuevo"])
-        user.save()
+        with transaction.atomic():
+            user.set_password(serializer.validated_data["password_nuevo"])
+            user.save(update_fields=["password"])
 
-        # Invalidar todos los tokens anteriores del usuario
-        RefreshToken.for_user(user)
+            tokens_previos = OutstandingToken.objects.filter(user=user)
+            for token in tokens_previos:
+                BlacklistedToken.objects.get_or_create(token=token)
+
+            refresh = TokenPersonalizadoSerializer.get_token(user)
+            access = refresh.access_token
+
+        registrar(
+            Bitacora.Accion.CAMBIO_PASSWORD,
+            request=request,
+            entidad="usuario",
+            entidad_id=user.pk,
+            descripcion="Contraseña actualizada.",
+        )
 
         return Response(
-            {"mensaje": "Contraseña actualizada correctamente."},
+            {
+                "mensaje": "Contraseña actualizada correctamente.",
+                "refresh": str(refresh),
+                "access": str(access),
+            },
             status=status.HTTP_200_OK,
         )

@@ -39,6 +39,7 @@ LOCAL_APPS = [
     "apps.instalaciones",
     "apps.fixture",
     "apps.ml",
+    "apps.auditoria",
     "apps.notificaciones",
     "apps.reportes",
 ]
@@ -92,6 +93,12 @@ DATABASES = {
 
 # ─── Auth / Password ──────────────────────────────────────────────────────────
 AUTH_USER_MODEL = "users.Usuario"
+LOGIN_MAX_INTENTOS = env.int("LOGIN_MAX_INTENTOS", default=5)
+LOGIN_BLOQUEO_MINUTOS = env.int("LOGIN_BLOQUEO_MINUTOS", default=15)
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+]
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -122,6 +129,12 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_THROTTLE_RATES": {
+        "login": env("LOGIN_THROTTLE_RATE", default="10/min"),
+    },
+    "EXCEPTION_HANDLER": "config.exception_handler.exception_handler",
+    # 0 = conexión directa (desarrollo); 1 cuando hay un proxy delante (nginx en producción).
+    "NUM_PROXIES": env.int("NUM_PROXIES", default=0),
     "DEFAULT_FILTER_BACKENDS": [
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.SearchFilter",

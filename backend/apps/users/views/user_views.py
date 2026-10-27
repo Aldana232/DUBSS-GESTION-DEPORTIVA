@@ -10,9 +10,11 @@ from rest_framework.parsers import MultiPartParser, FormParser
 from drf_spectacular.utils import extend_schema
 from django.utils import timezone
 
+from apps.auditoria.models import Bitacora
+from apps.auditoria.services import registrar
 from ..models import Usuario
-from ..serializers import UsuarioSerializer, UsuarioResumenSerializer
-from ..permissions import EsAdminDUBSS, EsDeportistaPropioOAdmin
+from ..serializers import UsuarioAdminSerializer, UsuarioSerializer
+from ..permissions import EsAdminDUBSS
 
 
 @extend_schema(tags=["usuarios"])
@@ -33,7 +35,7 @@ class MiPerfilView(generics.RetrieveUpdateAPIView):
 @extend_schema(tags=["usuarios"])
 class ListaUsuariosView(generics.ListAPIView):
     """Lista todos los usuarios — solo Admin DUBSS."""
-    serializer_class   = UsuarioSerializer
+    serializer_class   = UsuarioAdminSerializer
     permission_classes = [EsAdminDUBSS]
     queryset           = Usuario.objects.all().order_by("apellido", "nombre")
     filterset_fields   = ["rol", "facultad", "is_active"]
@@ -43,19 +45,53 @@ class ListaUsuariosView(generics.ListAPIView):
 @extend_schema(tags=["usuarios"])
 class DetalleUsuarioView(generics.RetrieveUpdateDestroyAPIView):
     """Detalle, edición y baja de un usuario — Admin DUBSS."""
-    serializer_class   = UsuarioSerializer
+    serializer_class   = UsuarioAdminSerializer
     permission_classes = [EsAdminDUBSS]
     queryset           = Usuario.objects.all()
 
     def destroy(self, request, *args, **kwargs):
         # Baja lógica, no eliminación física
         usuario = self.get_object()
+        if usuario.pk == request.user.pk:
+            return Response(
+                {"error": "No puedes darte de baja a ti mismo."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         usuario.is_active = False
         usuario.save(update_fields=["is_active"])
+        registrar(
+            Bitacora.Accion.ELIMINAR,
+            request=request,
+            entidad="usuario",
+            entidad_id=usuario.pk,
+            descripcion="Usuario dado de baja por un administrador.",
+        )
         return Response(
             {"mensaje": f"Usuario {usuario.nombre_completo} dado de baja."},
             status=status.HTTP_200_OK,
         )
+
+    def perform_update(self, serializer):
+        usuario = serializer.instance
+        rol_anterior = usuario.rol
+        super().perform_update(serializer)
+        registrar(
+            Bitacora.Accion.EDITAR,
+            request=self.request,
+            entidad="usuario",
+            entidad_id=usuario.pk,
+            descripcion="Usuario editado por un administrador.",
+            detalle={"campos": sorted(serializer.validated_data)},
+        )
+        if rol_anterior != usuario.rol:
+            registrar(
+                Bitacora.Accion.CAMBIO_ROL,
+                request=self.request,
+                entidad="usuario",
+                entidad_id=usuario.pk,
+                descripcion="Rol de usuario cambiado por un administrador.",
+                detalle={"anterior": rol_anterior, "nuevo": usuario.rol},
+            )
 
 
 @extend_schema(tags=["usuarios"])

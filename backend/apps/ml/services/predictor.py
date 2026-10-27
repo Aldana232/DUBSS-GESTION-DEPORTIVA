@@ -3,14 +3,12 @@ apps/ml/services/predictor.py
 CU16 — Modelo de Machine Learning para predicción de resultados.
 Usa RandomForest entrenado con historial de partidos.
 """
-import os
 import numpy as np
-import pandas as pd
 from pathlib import Path
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder
 import joblib
 from django.conf import settings
+from django.db.models import Q
 
 from apps.fixture.models import Partido, Resultado, TablaPosiciones
 from apps.ml.models import PrediccionPartido
@@ -55,8 +53,8 @@ class PredictorResultados:
                 campeonato=campeonato,
                 estado="FINALIZADO",
             ).filter(
-                models.Q(equipo_local=local,     equipo_visitante=visitante) |
-                models.Q(equipo_local=visitante, equipo_visitante=local)
+                Q(equipo_local=local, equipo_visitante=visitante) |
+                Q(equipo_local=visitante, equipo_visitante=local)
             ).order_by("-fecha_hora")[:5]
 
             victorias_local = 0
@@ -91,9 +89,6 @@ class PredictorResultados:
         del campeonato dado.
         Retorna métricas básicas del entrenamiento.
         """
-        from django.db.models import Q
-        from apps.deportes.models import Campeonato
-
         partidos = Partido.objects.filter(
             campeonato_id=campeonato_id,
             estado="FINALIZADO",

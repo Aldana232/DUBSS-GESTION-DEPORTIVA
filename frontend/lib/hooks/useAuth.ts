@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Cookies from "js-cookie";
 import { jwtDecode } from "jwt-decode";
-import api from "@/lib/api/client";
+import api, { guardarTokens } from "@/lib/api/client";
 
 interface JwtPayload {
   user_id: number;
@@ -33,8 +33,7 @@ export function useAuth() {
 
   const login = async (email: string, password: string) => {
     const { data } = await api.post("/auth/login/", { email, password });
-    Cookies.set("access_token",  data.access,  { expires: 1 / 24 });
-    Cookies.set("refresh_token", data.refresh, { expires: 7 });
+    guardarTokens(data.access, data.refresh);
     setUsuario(jwtDecode<JwtPayload>(data.access));
     return data;
   };

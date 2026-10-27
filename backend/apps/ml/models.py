@@ -4,7 +4,6 @@ CU14–CU16, CU18, CU20 — Predicciones ML y bitácora del sistema.
 """
 from django.db import models
 from apps.fixture.models import Partido
-from apps.deportes.models import Campeonato, Equipo
 
 
 class PrediccionPartido(models.Model):
@@ -70,34 +69,3 @@ class RiesgoClimatico(models.Model):
         verbose_name        = "Riesgo Climático"
         verbose_name_plural = "Riesgos Climáticos"
         ordering            = ["-consultado_en"]
-
-
-class Bitacora(models.Model):
-    """CU19 — Bitácora de acciones del sistema para auditoría."""
-
-    class Accion(models.TextChoices):
-        CREAR    = "CREAR",    "Crear"
-        EDITAR   = "EDITAR",   "Editar"
-        ELIMINAR = "ELIMINAR", "Eliminar"
-        LOGIN    = "LOGIN",    "Inicio de sesión"
-        LOGOUT   = "LOGOUT",   "Cierre de sesión"
-        EXPORTAR = "EXPORTAR", "Exportar reporte"
-        ML_PRED  = "ML_PRED",  "Predicción ML generada"
-
-    usuario     = models.ForeignKey("users.Usuario", on_delete=models.SET_NULL,
-                                    null=True, related_name="bitacora")
-    accion      = models.CharField(max_length=20, choices=Accion.choices)
-    modulo      = models.CharField(max_length=50, verbose_name="módulo del sistema")
-    descripcion = models.TextField(verbose_name="descripción de la acción")
-    objeto_id   = models.PositiveIntegerField(null=True, blank=True,
-                                              verbose_name="ID del objeto afectado")
-    ip_address  = models.GenericIPAddressField(null=True, blank=True)
-    timestamp   = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        verbose_name        = "Bitácora"
-        verbose_name_plural = "Bitácora"
-        ordering            = ["-timestamp"]
-
-    def __str__(self):
-        return f"[{self.timestamp:%d/%m/%Y %H:%M}] {self.usuario} — {self.accion} en {self.modulo}"

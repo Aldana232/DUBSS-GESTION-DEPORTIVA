@@ -14,6 +14,8 @@ from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from django.db import transaction
 
+from apps.auditoria.models import Bitacora
+from apps.auditoria.services import registrar
 from apps.users.permissions import (
     EsAdminDUBSS, EsCoordinadorOAdmin,
     EsArbitroOAdmin, EsLecturaPublica,
@@ -78,6 +80,17 @@ class PartidoViewSet(viewsets.ModelViewSet):
             # Actualizar tabla de posiciones
             _actualizar_tabla(partido, resultado)
 
+        registrar(
+            Bitacora.Accion.REGISTRAR_RESULTADO,
+            request=request,
+            entidad="partido",
+            entidad_id=partido.pk,
+            descripcion="Resultado registrado.",
+            detalle={
+                "goles_local": resultado.goles_local,
+                "goles_visitante": resultado.goles_visitante,
+            },
+        )
         return Response(ResultadoSerializer(resultado).data,
                         status=status.HTTP_201_CREATED)
 
@@ -94,8 +107,34 @@ class PartidoViewSet(viewsets.ModelViewSet):
             data=request.data, context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save(partido=partido)
+        incidencia = serializer.save(partido=partido)
+        registrar(
+            Bitacora.Accion.REGISTRAR_INCIDENCIA,
+            request=request,
+            entidad="partido",
+            entidad_id=partido.pk,
+            descripcion="Incidencia registrada en el partido.",
+            detalle={
+                "tipo": incidencia.tipo,
+                "minuto": incidencia.minuto,
+                "incidencia_id": incidencia.pk,
+            },
+        )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        partido = self.get_object()
+        campeonato_id = partido.campeonato_id
+        respuesta = super().destroy(request, *args, **kwargs)
+        registrar(
+            Bitacora.Accion.GENERAR_FIXTURE,
+            request=request,
+            entidad="campeonato",
+            entidad_id=campeonato_id,
+            descripcion="Partido eliminado del fixture.",
+            detalle={"operacion": "eliminar", "cantidad_partidos": 1},
+        )
+        return respuesta
 
 
 @extend_schema(tags=["fixture"])
@@ -135,6 +174,9 @@ class GenerarFixtureView(APIView):
             )
 
         try:
+            partidos_previos = Partido.objects.filter(
+                campeonato_id=campeonato_id
+            ).count()
             gen      = FixtureGenerator(
                 campeonato_id=campeonato_id,
                 hora_inicio=hora_inicio,
@@ -149,6 +191,18 @@ class GenerarFixtureView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+        registrar(
+            Bitacora.Accion.GENERAR_FIXTURE,
+            request=request,
+            entidad="campeonato",
+            entidad_id=campeonato_id,
+            descripcion="Fixture generado para el campeonato.",
+            detalle={
+                "operacion": "generar",
+                "cantidad_partidos": len(partidos),
+                "partidos_eliminados": partidos_previos,
+            },
+        )
         return Response(
             {
                 "mensaje":          f"Fixture generado: {len(partidos)} partidos creados.",
