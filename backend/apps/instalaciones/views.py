@@ -2,21 +2,26 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
-from apps.users.permissions import EsAdminDUBSS, EsLecturaPublica
-from .models import Instalacion, Cancha, BloqueoCancha
-from .serializers import InstalacionSerializer, CanchaSerializer, BloqueoSerializer
+from apps.users.permissions import EsAdmin, EsAdminUOrganizadorLectura
+from .models import Instalacion, Cancha, BloqueoCancha, HorarioCancha
+from .serializers import (
+    InstalacionSerializer,
+    CanchaSerializer,
+    BloqueoSerializer,
+    HorarioCanchaSerializer,
+)
 
 
 @extend_schema(tags=["instalaciones"])
 class InstalacionViewSet(viewsets.ModelViewSet):
     """CU07 — Gestión de instalaciones deportivas."""
-    queryset           = Instalacion.objects.filter(activa=True)
+    queryset           = Instalacion.objects.filter(estado="ACTIVA")
     serializer_class   = InstalacionSerializer
 
     def get_permissions(self):
         if self.action in ("create", "update", "partial_update", "destroy"):
-            return [EsAdminDUBSS()]
-        return [EsLecturaPublica()]
+            return [EsAdmin()]
+        return [EsAdminUOrganizadorLectura()]
 
     @extend_schema(summary="Canchas de esta instalación")
     @action(detail=True, methods=["get"])
@@ -35,8 +40,8 @@ class CanchaViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ("create", "update", "partial_update", "destroy"):
-            return [EsAdminDUBSS()]
-        return [EsLecturaPublica()]
+            return [EsAdmin()]
+        return [EsAdminUOrganizadorLectura()]
 
 
 @extend_schema(tags=["instalaciones"])
@@ -45,4 +50,18 @@ class BloqueoViewSet(viewsets.ModelViewSet):
     queryset           = BloqueoCancha.objects.select_related("cancha", "creado_por")
     serializer_class   = BloqueoSerializer
     filterset_fields   = ["cancha"]
-    permission_classes = [EsAdminDUBSS]
+    def get_permissions(self):
+        if self.action in ("create", "update", "partial_update", "destroy"):
+            return [EsAdmin()]
+        return [EsAdminUOrganizadorLectura()]
+
+
+@extend_schema(tags=["instalaciones"])
+class HorarioCanchaViewSet(viewsets.ModelViewSet):
+    queryset = HorarioCancha.objects.select_related("cancha", "cancha__instalacion")
+    serializer_class = HorarioCanchaSerializer
+    filterset_fields = ["cancha", "dia_semana"]
+    def get_permissions(self):
+        if self.action in ("create", "update", "partial_update", "destroy"):
+            return [EsAdmin()]
+        return [EsAdminUOrganizadorLectura()]

@@ -23,12 +23,12 @@ class BitacoraSerializer(serializers.ModelSerializer):
             "usuario",
             "usuario_email",
             "accion",
-            "entidad",
-            "entidad_id",
+            "modulo",
+            "objeto_id",
             "descripcion",
             "detalle",
             "resultado",
-            "ip_address",
-            "fecha",
+            "ip_origen",
+            "fecha_hora",
         ]
         read_only_fields = fields

@@ -1,4 +1,3 @@
-version: "3.9"
 
 services:
 
@@ -40,10 +39,59 @@ services:
       - "8000:8000"
     environment:
       - DJANGO_SETTINGS_MODULE=config.settings.development
+      - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
     depends_on:
       db:
+        condition: service_healthy
+
+  # ─── Redis + Celery (tareas programadas) ─────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: dubss_redis
+    restart: unless-stopped
+    command: redis-server --save "" --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dubss_celery_worker
+    restart: unless-stopped
+    command: celery -A config worker -l info --concurrency 2
+    volumes:
+      - media_volume:/app/mediafiles
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.development
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery_beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dubss_celery_beat
+    restart: unless-stopped
+    command: celery -A config beat -l info --schedule /tmp/celerybeat-schedule
+    environment:
+      - DJANGO_SETTINGS_MODULE=config.settings.development
+      - REDIS_URL=redis://redis:6379/0
+    env_file:
+      - .env
+    depends_on:
+      redis:
         condition: service_healthy
 
   # ─── Frontend Next.js ─────────────────────────────────────────────────────────

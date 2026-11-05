@@ -1,56 +1,46 @@
 "use client";
-import { useState, useEffect } from "react";
-import Cookies from "js-cookie";
-import { jwtDecode } from "jwt-decode";
-import api, { guardarTokens } from "@/lib/api/client";
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { authService } from "@/lib/api/services";
+import { PERMISOS_POR_ROL, type Permiso } from "@/lib/auth/roles";
 
-interface JwtPayload {
-  user_id: number;
-  email: string;
-  nombre_completo: string;
-  rol: string;
-  exp: number;
-}
-
+/** Sesión actual. El usuario viene de /api/auth/session (los tokens viven en cookies httpOnly). */
 export function useAuth() {
-  const [usuario, setUsuario] = useState<JwtPayload | null>(null);
-  const [loading, setLoading]  = useState(true);
+  const qc = useQueryClient();
+  const { data: usuario = null, isLoading } = useQuery({
+    queryKey: ["sesion"],
+    queryFn: authService.sesion,
+    staleTime: 60_000,
+    retry: false,
+  });
 
-  useEffect(() => {
-    const token = Cookies.get("access_token");
-    if (token) {
-      try {
-        const decoded = jwtDecode<JwtPayload>(token);
-        if (decoded.exp * 1000 > Date.now()) {
-          setUsuario(decoded);
-        } else {
-          Cookies.remove("access_token");
-        }
-      } catch { /* token inválido */ }
-    }
-    setLoading(false);
-  }, []);
+  const rol = usuario?.rol ?? null;
+  const can = useCallback(
+    (permiso: Permiso) => (rol ? PERMISOS_POR_ROL[rol].includes(permiso) : false),
+    [rol],
+  );
 
-  const login = async (email: string, password: string) => {
-    const { data } = await api.post("/auth/login/", { email, password });
-    guardarTokens(data.access, data.refresh);
-    setUsuario(jwtDecode<JwtPayload>(data.access));
-    return data;
-  };
-
-  const logout = async () => {
-    const refresh = Cookies.get("refresh_token");
-    if (refresh) {
-      try { await api.post("/auth/logout/", { refresh }); } catch { /* ok */ }
-    }
-    Cookies.remove("access_token");
-    Cookies.remove("refresh_token");
-    setUsuario(null);
+  const logout = useCallback(async () => {
+    await authService.logout();
+    qc.clear();
     window.location.href = "/login";
+  }, [qc]);
+
+  const esSuperadmin = rol === "SUPERADMIN";
+  const esAdmin = rol === "ADMIN_DUBSS" || esSuperadmin;
+  const esOrganizador = rol === "ORGANIZADOR";
+
+  return {
+    usuario,
+    rol,
+    facultad: usuario?.facultad ?? null,
+    loading: isLoading,
+    can,
+    logout,
+    esSuperadmin,
+    esAdmin,
+    esOrganizador,
+    esDelegado: rol === "DELEGADO",
+    esGestion: esAdmin || esOrganizador,
   };
-
-  const esAdmin = usuario?.rol === "ADMIN_DUBSS";
-  const esCoord = ["ADMIN_DUBSS", "COORDINADOR"].includes(usuario?.rol ?? "");
-
-  return { usuario, loading, login, logout, esAdmin, esCoord };
 }

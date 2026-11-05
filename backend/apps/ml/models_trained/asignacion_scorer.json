@@ -1,0 +1,36 @@
+{
+  "version": "asignacion-rf-20261031050023",
+  "features": [
+    "franja_horaria",
+    "dia_semana",
+    "es_fin_de_semana",
+    "dias_desde_ultimo_local",
+    "dias_desde_ultimo_visit",
+    "descanso_minimo",
+    "instalacion_disponible",
+    "conflictos_horario",
+    "holgura_facultad_min"
+  ],
+  "muestras": 3112,
+  "muestras_reales": 112,
+  "muestras_reglas": 3000,
+  "exactitud": 0.9952,
+  "precision": 0.9737,
+  "sensibilidad": 1.0,
+  "f1": 0.9867,
+  "auc": 0.9999,
+  "importancias": {
+    "franja_horaria": 0.3338,
+    "dia_semana": 0.0376,
+    "es_fin_de_semana": 0.0275,
+    "dias_desde_ultimo_local": 0.0601,
+    "dias_desde_ultimo_visit": 0.0754,
+    "descanso_minimo": 0.2007,
+    "instalacion_disponible": 0.0301,
+    "conflictos_horario": 0.1708,
+    "holgura_facultad_min": 0.064
+  },
+  "etiquetado": "historial real + reglas",
+  "entrenado_en": "2026-10-31T05:00:23.812233+00:00",
+  "muestras_reales_nuevas": 112
+}

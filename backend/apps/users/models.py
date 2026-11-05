@@ -1,7 +1,6 @@
 """
 apps/users/models.py
 Modelo de usuario personalizado para el sistema DUBSS.
-Roles: ADMIN_DUBSS, COORDINADOR, ARBITRO, DEPORTISTA, PUBLICO
 """
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.db import models
@@ -23,7 +22,7 @@ class UsuarioManager(BaseUserManager):
     def create_superuser(self, email, password=None, **extra_fields):
         extra_fields.setdefault("is_staff",     True)
         extra_fields.setdefault("is_superuser",  True)
-        extra_fields.setdefault("rol",           "ADMIN_DUBSS")
+        extra_fields.setdefault("rol",           "SUPERADMIN")
         return self.create_user(email, password, **extra_fields)
 
 
@@ -34,11 +33,12 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     """
 
     class Rol(models.TextChoices):
+        SUPERADMIN    = "SUPERADMIN",    "Superadministrador"
         ADMIN_DUBSS   = "ADMIN_DUBSS",   "Administrador DUBSS"
-        COORDINADOR   = "COORDINADOR",   "Coordinador de Facultad"
-        ARBITRO       = "ARBITRO",       "Árbitro"
-        DEPORTISTA    = "DEPORTISTA",    "Deportista"
-        PUBLICO       = "PUBLICO",       "Público General"
+        ORGANIZADOR   = "ORGANIZADOR",   "Organizador"
+        DELEGADO      = "DELEGADO",      "Delegado"
+        # Jugador con cuenta (F7-10): solo lee su propia ficha, estadisticas y sanciones. Sin otros permisos.
+        JUGADOR       = "JUGADOR",       "Jugador"
 
     # ── Campos de identidad ──────────────────────────────────────────────────
     email           = models.EmailField(unique=True, verbose_name="correo electrónico")
@@ -52,10 +52,18 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
 
     # ── Rol institucional ────────────────────────────────────────────────────
     rol             = models.CharField(max_length=20, choices=Rol.choices,
-                                       default=Rol.DEPORTISTA, verbose_name="rol")
-    facultad        = models.CharField(max_length=150, blank=True, verbose_name="facultad")
+                                       default=Rol.DELEGADO, verbose_name="rol")
+    facultad        = models.ForeignKey(
+        "deportes.Facultad",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="usuarios",
+        verbose_name="facultad",
+    )
 
     # ── Estado ───────────────────────────────────────────────────────────────
+    estado          = models.CharField(max_length=12, default="ACTIVO")
     is_active       = models.BooleanField(default=True,  verbose_name="activo")
     is_staff        = models.BooleanField(default=False, verbose_name="staff")
     intentos_fallidos = models.PositiveSmallIntegerField(default=0)
@@ -94,13 +102,13 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
         return es_admin(self)
 
     @property
-    def es_coordinador(self):
-        from .roles import es_admin, es_organizador
+    def es_organizador(self):
+        from .roles import es_organizador
 
-        return es_admin(self) or es_organizador(self)
+        return es_organizador(self)
 
     @property
-    def es_arbitro(self):
-        from .roles import es_arbitro
+    def es_delegado(self):
+        from .roles import es_delegado
 
-        return es_arbitro(self)
+        return es_delegado(self)

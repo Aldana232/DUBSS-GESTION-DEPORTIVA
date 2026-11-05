@@ -7,12 +7,15 @@ from ..views.user_views import (
     MiPerfilView,
     ListaUsuariosView,
     DetalleUsuarioView,
+    RestablecerPasswordUsuarioView,
     ActualizarFCMTokenView,
 )
 
 urlpatterns = [
     path("perfil/",          MiPerfilView.as_view(),        name="usuario-perfil"),
     path("",                 ListaUsuariosView.as_view(),    name="usuario-lista"),
+    path("<int:pk>/restablecer-password/", RestablecerPasswordUsuarioView.as_view(),
+         name="usuario-restablecer-password"),
     path("<int:pk>/",        DetalleUsuarioView.as_view(),   name="usuario-detalle"),
     path("fcm-token/",       ActualizarFCMTokenView.as_view(), name="usuario-fcm-token"),
 ]

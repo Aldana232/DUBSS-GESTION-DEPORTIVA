@@ -2,6 +2,7 @@
 apps/reportes/views.py
 CU21 — Exportación de reportes en PDF y Excel.
 """
+import logging
 import io
 from datetime import datetime
 from rest_framework.views import APIView
@@ -10,16 +11,19 @@ from rest_framework import status
 from drf_spectacular.utils import extend_schema
 from django.http import HttpResponse
 
-from apps.auditoria.models import Bitacora
-from apps.auditoria.services import registrar
-from apps.users.permissions import EsCoordinadorOAdmin, EsLecturaPublica
+from apps.users.permissions import EsAdminUOrganizador
 from apps.deportes.models import Campeonato
 from apps.fixture.models import Partido, TablaPosiciones
 
 
+logger = logging.getLogger(__name__)
+
+
 def _get_campeonato(campeonato_id):
     try:
-        return Campeonato.objects.select_related("deporte", "categoria").get(pk=campeonato_id)
+        return Campeonato.objects.select_related(
+            "categoria__deporte"
+        ).get(pk=campeonato_id)
     except Campeonato.DoesNotExist:
         return None
 
@@ -27,7 +31,7 @@ def _get_campeonato(campeonato_id):
 @extend_schema(tags=["reportes"])
 class ReportePDFView(APIView):
     """CU21 — Exportar reporte completo del campeonato en PDF."""
-    permission_classes = [EsLecturaPublica]
+    permission_classes = [EsAdminUOrganizador]
 
     @extend_schema(summary="CU21 — Descargar reporte PDF del campeonato")
     def get(self, request, campeonato_id):
@@ -41,7 +45,7 @@ class ReportePDFView(APIView):
             from reportlab.platypus import (
                 SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
             )
-            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.styles import getSampleStyleSheet
             from reportlab.lib.units import inch
         except ImportError:
             return Response({"error": "reportlab no disponible."},
@@ -56,7 +60,7 @@ class ReportePDFView(APIView):
         story.append(Paragraph("DUBSS — UAGRM", styles["Title"]))
         story.append(Paragraph(f"Reporte: {campeonato.nombre}", styles["Heading1"]))
         story.append(Paragraph(
-            f"Deporte: {campeonato.deporte} | Categoría: {campeonato.categoria} | "
+            f"Deporte: {campeonato.categoria.deporte} | Categoría: {campeonato.categoria} | "
             f"Estado: {campeonato.estado}",
             styles["Normal"],
         ))
@@ -66,7 +70,7 @@ class ReportePDFView(APIView):
         story.append(Paragraph("Tabla de Posiciones", styles["Heading2"]))
         tabla = TablaPosiciones.objects.filter(
             campeonato=campeonato
-        ).select_related("equipo").order_by("-puntos", "-gf")
+        ).select_related("equipo").order_by("posicion", "-puntos", "-gf")
 
         data = [["#", "Equipo", "PJ", "PG", "PE", "PP", "GF", "GC", "DG", "Pts"]]
         for i, fila in enumerate(tabla, 1):
@@ -82,7 +86,7 @@ class ReportePDFView(APIView):
         if len(data) > 1:
             t = Table(data, colWidths=[0.4*inch, 2*inch] + [0.5*inch]*8)
             t.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a6b3c")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d21115")),
                 ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
                 ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("ALIGN",      (0, 0), (-1, -1), "CENTER"),
@@ -107,9 +111,9 @@ class ReportePDFView(APIView):
                 res = "Pend."
             data2.append([
                 str(p.jornada),
-                p.equipo_local.nombre,
+                p.equipo_local.nombre if p.equipo_local else "Por definir",
                 res,
-                p.equipo_visitante.nombre,
+                p.equipo_visitante.nombre if p.equipo_visitante else "Por definir",
                 p.cancha.nombre if p.cancha else "—",
                 p.fecha_hora.strftime("%d/%m/%Y %H:%M"),
             ])
@@ -117,7 +121,7 @@ class ReportePDFView(APIView):
         if len(data2) > 1:
             t2 = Table(data2, colWidths=[0.6*inch, 1.5*inch, 0.8*inch, 1.5*inch, 1.2*inch, 1.2*inch])
             t2.setStyle(TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a6b3c")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#d21115")),
                 ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
                 ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
                 ("ALIGN",      (0, 0), (-1, -1), "CENTER"),
@@ -138,13 +142,13 @@ class ReportePDFView(APIView):
         nombre = f"reporte_{campeonato.nombre.replace(' ', '_')}.pdf"
         response = HttpResponse(buf, content_type="application/pdf")
         response["Content-Disposition"] = f'attachment; filename="{nombre}"'
-        registrar(
-            Bitacora.Accion.EXPORTAR,
-            request=request,
-            entidad="campeonato",
-            entidad_id=campeonato.pk,
-            descripcion="Reporte del campeonato exportado en PDF.",
-            detalle={"formato": "PDF"},
+        logger.info(
+            "Reporte de campeonato exportado.",
+            extra={
+                "usuario_id": request.user.pk,
+                "campeonato_id": campeonato.pk,
+                "formato": "PDF",
+            },
         )
         return response
 
@@ -152,7 +156,7 @@ class ReportePDFView(APIView):
 @extend_schema(tags=["reportes"])
 class ReporteExcelView(APIView):
     """CU21 — Exportar reporte completo del campeonato en Excel."""
-    permission_classes = [EsLecturaPublica]
+    permission_classes = [EsAdminUOrganizador]
 
     @extend_schema(summary="CU21 — Descargar reporte Excel del campeonato")
     def get(self, request, campeonato_id):
@@ -172,7 +176,7 @@ class ReporteExcelView(APIView):
         # ── Hoja 1: Tabla de posiciones ───────────────────────────────────────
         ws1 = wb.active
         ws1.title = "Tabla de Posiciones"
-        header_fill = PatternFill("solid", fgColor="1a6b3c")
+        header_fill = PatternFill("solid", fgColor="d21115")
         header_font = Font(bold=True, color="FFFFFF")
 
         headers = ["#", "Equipo", "PJ", "PG", "PE", "PP", "GF", "GC", "DG", "Pts"]
@@ -184,7 +188,7 @@ class ReporteExcelView(APIView):
 
         tabla = TablaPosiciones.objects.filter(
             campeonato=campeonato
-        ).select_related("equipo").order_by("-puntos", "-gf")
+        ).select_related("equipo").order_by("posicion", "-puntos", "-gf")
 
         for i, fila in enumerate(tabla, 1):
             ws1.append([
@@ -216,9 +220,9 @@ class ReporteExcelView(APIView):
                 gl, gv = "", ""
             ws2.append([
                 p.jornada,
-                p.equipo_local.nombre,
+                p.equipo_local.nombre if p.equipo_local else "Por definir",
                 gl, gv,
-                p.equipo_visitante.nombre,
+                p.equipo_visitante.nombre if p.equipo_visitante else "Por definir",
                 p.cancha.nombre if p.cancha else "—",
                 p.fecha_hora.strftime("%d/%m/%Y %H:%M"),
                 p.estado,
@@ -236,12 +240,12 @@ class ReporteExcelView(APIView):
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
         response["Content-Disposition"] = f'attachment; filename="{nombre}"'
-        registrar(
-            Bitacora.Accion.EXPORTAR,
-            request=request,
-            entidad="campeonato",
-            entidad_id=campeonato.pk,
-            descripcion="Reporte del campeonato exportado en Excel.",
-            detalle={"formato": "Excel"},
+        logger.info(
+            "Reporte de campeonato exportado.",
+            extra={
+                "usuario_id": request.user.pk,
+                "campeonato_id": campeonato.pk,
+                "formato": "Excel",
+            },
         )
         return response

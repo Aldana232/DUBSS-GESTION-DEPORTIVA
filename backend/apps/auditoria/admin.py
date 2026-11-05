@@ -5,22 +5,22 @@ from .models import Bitacora
 
 @admin.register(Bitacora)
 class BitacoraAdmin(admin.ModelAdmin):
-    list_display = ["fecha", "usuario_email", "accion", "entidad", "entidad_id", "resultado"]
-    list_filter = ["accion", "entidad", "resultado"]
+    list_display = ["fecha_hora", "usuario_email", "accion", "modulo", "objeto_id", "resultado"]
+    list_filter = ["accion", "modulo", "resultado"]
     search_fields = ["descripcion", "usuario_email"]
-    date_hierarchy = "fecha"
+    date_hierarchy = "fecha_hora"
     readonly_fields = [
         "id",
         "usuario",
         "usuario_email",
         "accion",
-        "entidad",
-        "entidad_id",
+        "modulo",
+        "objeto_id",
         "descripcion",
         "detalle",
         "resultado",
-        "ip_address",
-        "fecha",
+        "ip_origen",
+        "fecha_hora",
     ]
 
     def has_add_permission(self, request):

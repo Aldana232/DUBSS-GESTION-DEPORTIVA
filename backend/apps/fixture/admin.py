@@ -1,11 +1,12 @@
 from django.contrib import admin
-from .models import Partido, Resultado, Incidencia, TablaPosiciones
+from .models import Partido, Resultado, Incidencia, TablaPosiciones, PosicionHistorial
 
 
 class ResultadoInline(admin.StackedInline):
     model  = Resultado
     extra  = 0
-    fields = ["goles_local", "goles_visitante", "verificado", "observaciones"]
+    fields = ["goles_local", "goles_visitante", "penales_local", "penales_visitante",
+              "walkover", "verificado", "observaciones"]
 
 
 class IncidenciaInline(admin.TabularInline):
@@ -25,6 +26,12 @@ class PartidoAdmin(admin.ModelAdmin):
 
 @admin.register(TablaPosiciones)
 class TablaPosicionesAdmin(admin.ModelAdmin):
-    list_display = ["equipo", "campeonato", "pj", "pg", "pe", "pp", "gf", "gc", "puntos"]
+    list_display = ["posicion", "equipo", "campeonato", "pj", "pg", "pe", "pp", "gf", "gc", "puntos"]
     list_filter  = ["campeonato"]
-    ordering     = ["-puntos"]
+    ordering     = ["posicion", "-puntos"]
+
+
+@admin.register(PosicionHistorial)
+class PosicionHistorialAdmin(admin.ModelAdmin):
+    list_display = ["campeonato", "jornada", "posicion", "equipo", "puntos"]
+    list_filter  = ["campeonato", "jornada"]

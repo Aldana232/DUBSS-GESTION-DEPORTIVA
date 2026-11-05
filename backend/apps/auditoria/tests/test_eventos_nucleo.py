@@ -8,7 +8,9 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.auditoria.models import Bitacora
-from apps.deportes.models import Campeonato, Categoria, Deporte, Equipo
+from apps.deportes.models import (
+    Campeonato, Categoria, Deporte, Equipo, Facultad, Inscripcion,
+)
 from apps.fixture.models import Incidencia, Partido
 from apps.ml.models import PrediccionPartido, RiesgoClimatico
 from apps.users.models import Usuario
@@ -39,7 +41,6 @@ def campeonato(db, admin):
     categoria = Categoria.objects.create(deporte=deporte, nombre="Primera")
     return Campeonato.objects.create(
         nombre="Campeonato auditoria",
-        deporte=deporte,
         categoria=categoria,
         fecha_inicio=date(2026, 1, 1),
         fecha_fin=date(2026, 12, 31),
@@ -49,17 +50,29 @@ def campeonato(db, admin):
 
 @pytest.fixture
 def equipos(campeonato):
+    facultad_a = Facultad.objects.create(nombre="Facultad A", sigla="FA")
+    facultad_b = Facultad.objects.create(nombre="Facultad B", sigla="FB")
+    equipo_local = Equipo.objects.create(
+        nombre="Local",
+        facultad=facultad_a,
+    )
+    equipo_visitante = Equipo.objects.create(
+        nombre="Visitante",
+        facultad=facultad_b,
+    )
+    Inscripcion.objects.create(
+        campeonato=campeonato,
+        equipo=equipo_local,
+        estado=Inscripcion.Estado.APROBADA,
+    )
+    Inscripcion.objects.create(
+        campeonato=campeonato,
+        equipo=equipo_visitante,
+        estado=Inscripcion.Estado.APROBADA,
+    )
     return (
-        Equipo.objects.create(
-            campeonato=campeonato,
-            nombre="Local",
-            facultad="Facultad A",
-        ),
-        Equipo.objects.create(
-            campeonato=campeonato,
-            nombre="Visitante",
-            facultad="Facultad B",
-        ),
+        equipo_local,
+        equipo_visitante,
     )
 
 
@@ -79,7 +92,7 @@ def test_403_autenticado_se_audita_con_metodo_y_ruta(client, db):
         password="UsuarioPass123!",
         nombre="Sin",
         apellido="Permiso",
-        rol=Usuario.Rol.DEPORTISTA,
+        rol=Usuario.Rol.JUGADOR,
     )
     client.force_authenticate(user=usuario)
 
@@ -111,18 +124,18 @@ def test_cambio_estado_campeonato_registra_estado_anterior_y_nuevo(
 
     respuesta = client.patch(
         reverse("campeonato-cambiar-estado", kwargs={"pk": campeonato.pk}),
-        {"estado": Campeonato.Estado.EN_CURSO},
+        {"estado": Campeonato.Estado.INSCRIPCIONES},
         format="json",
     )
 
     assert respuesta.status_code == 200
     registro = Bitacora.objects.get(accion=Bitacora.Accion.CAMBIO_ESTADO)
     assert registro.usuario == admin
-    assert registro.entidad == "campeonato"
-    assert registro.entidad_id == campeonato.pk
+    assert registro.modulo == "campeonato"
+    assert registro.objeto_id == campeonato.pk
     assert registro.detalle == {
         "anterior": Campeonato.Estado.PLANIFICACION,
-        "nuevo": Campeonato.Estado.EN_CURSO,
+        "nuevo": Campeonato.Estado.INSCRIPCIONES,
     }
 
 
@@ -132,7 +145,7 @@ def test_generar_fixture_audita_creados_y_eliminados(
     client.force_authenticate(user=admin)
     monkeypatch.setattr(
         "apps.fixture.views.FixtureGenerator",
-        lambda **kwargs: SimpleNamespace(generar=lambda usar_ml=False: [partido]),
+        lambda **kwargs: SimpleNamespace(generar=lambda usar_ml=False, sembrar_con_ml=False: [partido]),
     )
 
     respuesta = client.post(
@@ -144,11 +157,13 @@ def test_generar_fixture_audita_creados_y_eliminados(
     assert respuesta.status_code == 201
     registro = Bitacora.objects.get(accion=Bitacora.Accion.GENERAR_FIXTURE)
     assert registro.usuario == admin
-    assert registro.entidad_id == campeonato.pk
+    assert registro.objeto_id == campeonato.pk
     assert registro.detalle == {
         "operacion": "generar",
         "cantidad_partidos": 1,
         "partidos_eliminados": 1,
+        "doble_vuelta": False,
+        "generado_por_ml": False,
     }
 
 
@@ -162,7 +177,7 @@ def test_eliminar_partido_audita_eliminacion_del_fixture(client, admin, partido)
     assert respuesta.status_code == 204
     registro = Bitacora.objects.get(accion=Bitacora.Accion.GENERAR_FIXTURE)
     assert registro.usuario == admin
-    assert registro.entidad_id == partido.campeonato_id
+    assert registro.objeto_id == partido.campeonato_id
     assert registro.detalle == {
         "operacion": "eliminar",
         "cantidad_partidos": 1,
@@ -185,9 +200,11 @@ def test_registrar_resultado_audita_goles(client, admin, partido):
     assert respuesta.status_code == 201
     registro = Bitacora.objects.get(accion=Bitacora.Accion.REGISTRAR_RESULTADO)
     assert registro.usuario == admin
-    assert registro.entidad == "partido"
-    assert registro.entidad_id == partido.pk
-    assert registro.detalle == {"goles_local": 2, "goles_visitante": 1}
+    assert registro.modulo == "partido"
+    assert registro.objeto_id == partido.pk
+    assert registro.detalle == {
+        "goles_local": 2, "goles_visitante": 1, "walkover": False,
+    }
 
 
 def test_registrar_incidencia_audita_tipo_y_minuto(client, admin, partido):
@@ -196,8 +213,7 @@ def test_registrar_incidencia_audita_tipo_y_minuto(client, admin, partido):
     respuesta = client.post(
         reverse("partido-registrar-incidencia", kwargs={"pk": partido.pk}),
         {
-            "partido": partido.pk,
-            "tipo": Incidencia.Tipo.GOL,
+            "tipo": Incidencia.Tipo.OTRO,
             "minuto": 12,
         },
         format="json",
@@ -207,11 +223,12 @@ def test_registrar_incidencia_audita_tipo_y_minuto(client, admin, partido):
     incidencia = Incidencia.objects.get(partido=partido)
     registro = Bitacora.objects.get(accion=Bitacora.Accion.REGISTRAR_INCIDENCIA)
     assert registro.usuario == admin
-    assert registro.entidad_id == partido.pk
+    assert registro.objeto_id == partido.pk
     assert registro.detalle == {
-        "tipo": Incidencia.Tipo.GOL,
+        "tipo": Incidencia.Tipo.OTRO,
         "minuto": 12,
         "incidencia_id": incidencia.pk,
+        "partidos_sancion": 0,
     }
 
 
@@ -220,22 +237,27 @@ def test_registrar_incidencia_audita_tipo_y_minuto(client, admin, partido):
     [("reporte-pdf", "PDF"), ("reporte-excel", "Excel")],
 )
 def test_exportacion_de_reporte_audita_formato(
-    client, campeonato, nombre_url, formato
+    client, admin, campeonato, nombre_url, formato, caplog
 ):
-    respuesta = client.get(
-        reverse(nombre_url, kwargs={"campeonato_id": campeonato.pk})
-    )
+    client.force_authenticate(user=admin)
+    with caplog.at_level("INFO", logger="apps.reportes.views"):
+        respuesta = client.get(
+            reverse(nombre_url, kwargs={"campeonato_id": campeonato.pk})
+        )
 
     assert respuesta.status_code == 200
-    registro = Bitacora.objects.get(accion=Bitacora.Accion.EXPORTAR)
-    assert registro.entidad == "campeonato"
-    assert registro.entidad_id == campeonato.pk
-    assert registro.detalle == {"formato": formato}
+    assert not Bitacora.objects.filter(accion=Bitacora.Accion.EXPORTAR).exists()
+    assert any(
+        entrada.message == "Reporte de campeonato exportado."
+        and entrada.__dict__["formato"] == formato
+        for entrada in caplog.records
+    )
 
 
-def test_prediccion_de_partido_audita_evento(
-    client, partido, monkeypatch
+def test_get_prediccion_de_partido_no_escribe_en_bitacora(
+    client, admin, partido, monkeypatch
 ):
+    client.force_authenticate(user=admin)
     prediccion = PrediccionPartido.objects.create(
         partido=partido,
         prob_victoria_local=0.6,
@@ -247,7 +269,9 @@ def test_prediccion_de_partido_audita_evento(
     )
     monkeypatch.setattr(
         "apps.ml.views.PredictorResultados",
-        lambda: SimpleNamespace(predecir=lambda partido: prediccion),
+        lambda: SimpleNamespace(
+            predecir=lambda partido, *, persistir: prediccion
+        ),
     )
 
     respuesta = client.get(
@@ -255,18 +279,16 @@ def test_prediccion_de_partido_audita_evento(
     )
 
     assert respuesta.status_code == 200
-    registro = Bitacora.objects.get(accion=Bitacora.Accion.ML_PRED)
-    assert registro.entidad == "partido"
-    assert registro.entidad_id == partido.pk
-    assert registro.descripcion == "Predicción del resultado del partido generada."
+    assert not Bitacora.objects.filter(accion=Bitacora.Accion.ML_PRED).exists()
 
 
-def test_tablero_de_predicciones_audita_cantidad_de_partidos(
-    client, partido, monkeypatch
+def test_get_tablero_de_predicciones_no_escribe_en_bitacora(
+    client, admin, partido
 ):
+    client.force_authenticate(user=admin)
     partido.estado = Partido.Estado.PROGRAMADO
     partido.save(update_fields=["estado"])
-    prediccion = PrediccionPartido.objects.create(
+    PrediccionPartido.objects.create(
         partido=partido,
         prob_victoria_local=0.6,
         prob_empate=0.2,
@@ -275,43 +297,38 @@ def test_tablero_de_predicciones_audita_cantidad_de_partidos(
         goles_visit_pred=1,
         confianza=0.6,
     )
-    monkeypatch.setattr(
-        "apps.ml.views.PredictorResultados",
-        lambda: SimpleNamespace(predecir=lambda partido: prediccion),
-    )
-
     respuesta = client.get(
         reverse("ml-tablero"),
         {"campeonato": partido.campeonato_id},
     )
 
     assert respuesta.status_code == 200
-    registro = Bitacora.objects.get(accion=Bitacora.Accion.ML_PRED)
-    assert registro.entidad == "campeonato"
-    assert registro.entidad_id == partido.campeonato_id
-    assert registro.detalle == {"partidos": 1}
+    assert not Bitacora.objects.filter(accion=Bitacora.Accion.ML_PRED).exists()
 
 
-def test_prediccion_de_asistencia_audita_evento(client, partido):
+def test_get_prediccion_de_asistencia_no_escribe_en_bitacora(client, admin, partido):
+    client.force_authenticate(user=admin)
     respuesta = client.get(
         reverse("ml-asistencia", kwargs={"partido_id": partido.pk})
     )
 
     assert respuesta.status_code == 200
-    registro = Bitacora.objects.get(accion=Bitacora.Accion.ML_PRED)
-    assert registro.entidad == "partido"
-    assert registro.entidad_id == partido.pk
-    assert registro.descripcion == "Predicción de asistencia generada."
+    assert not Bitacora.objects.filter(accion=Bitacora.Accion.ML_PRED).exists()
 
 
-def test_riesgo_climatico_audita_evento(client, partido, monkeypatch):
+def test_get_riesgo_climatico_no_escribe_en_bitacora(
+    client, admin, partido, monkeypatch
+):
+    client.force_authenticate(user=admin)
     riesgo = RiesgoClimatico.objects.create(
         partido=partido,
         nivel_riesgo=RiesgoClimatico.NivelRiesgo.BAJO,
     )
     monkeypatch.setattr(
         "apps.ml.views.ServicioClima",
-        lambda: SimpleNamespace(consultar=lambda partido: riesgo),
+        lambda: SimpleNamespace(
+            consultar=lambda partido, *, persistir: riesgo
+        ),
     )
 
     respuesta = client.get(
@@ -319,56 +336,30 @@ def test_riesgo_climatico_audita_evento(client, partido, monkeypatch):
     )
 
     assert respuesta.status_code == 200
-    registro = Bitacora.objects.get(accion=Bitacora.Accion.ML_PRED)
-    assert registro.entidad == "partido"
-    assert registro.entidad_id == partido.pk
-    assert registro.descripcion == "Pronóstico de riesgo climático consultado."
+    assert not Bitacora.objects.filter(accion=Bitacora.Accion.ML_PRED).exists()
 
 
-def test_entrenamiento_modelo_audita_evento(client, admin, campeonato, monkeypatch):
+def test_entrenamiento_modelo_audita_evento(client, admin, monkeypatch):
     client.force_authenticate(user=admin)
-    monkeypatch.setattr(
-        "apps.ml.views.PredictorResultados",
-        lambda: SimpleNamespace(entrenar=lambda campeonato_id: {
-            "partidos_entrenados": 8,
-            "accuracy_training": 0.9,
-        }),
-    )
+    monkeypatch.setattr("apps.ml.views.predictor_entrenar", lambda: {
+        "entrenado": True, "version": "rf-prueba", "partidos": 80, "activo": False})
 
-    respuesta = client.post(
-        reverse("ml-entrenar"),
-        {"campeonato_id": campeonato.pk},
-        format="json",
-    )
+    respuesta = client.post(reverse("ml-entrenar"), {}, format="json")
 
     assert respuesta.status_code == 200
     registro = Bitacora.objects.get(accion=Bitacora.Accion.ML_PRED)
-    assert registro.usuario == admin
-    assert registro.entidad == "campeonato"
-    assert registro.entidad_id == campeonato.pk
-    assert registro.detalle == {"partidos_entrenados": 8}
+    assert registro.usuario == admin and registro.modulo == "ml"
+    assert registro.resultado == Bitacora.Resultado.OK
+    assert registro.detalle == {"version": "rf-prueba", "partidos": 80, "activo": False}
 
 
-def test_entrenamiento_fallido_se_registra_como_error(
-    client, admin, campeonato, monkeypatch
-):
+def test_entrenamiento_fallido_se_registra_como_error(client, admin, monkeypatch):
     client.force_authenticate(user=admin)
-    monkeypatch.setattr(
-        "apps.ml.views.PredictorResultados",
-        lambda: SimpleNamespace(
-            entrenar=lambda campeonato_id: {
-                "error": "Se necesitan al menos 5 partidos finalizados para entrenar."
-            }
-        ),
-    )
+    monkeypatch.setattr("apps.ml.views.predictor_entrenar", lambda: {
+        "entrenado": False, "motivo": "Datos insuficientes: hay 3 partidos finalizados.", "partidos": 3})
 
-    respuesta = client.post(
-        reverse("ml-entrenar"),
-        {"campeonato_id": campeonato.pk},
-        format="json",
-    )
+    respuesta = client.post(reverse("ml-entrenar"), {}, format="json")
 
-    assert respuesta.status_code == 200
+    assert respuesta.status_code == 400
     registro = Bitacora.objects.get(accion=Bitacora.Accion.ML_PRED)
-    assert registro.resultado == Bitacora.Resultado.ERROR
-    assert registro.descripcion == "Entrenamiento del modelo de resultados fallido."
+    assert registro.resultado == Bitacora.Resultado.ERROR and registro.detalle["partidos"] == 3

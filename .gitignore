@@ -62,3 +62,7 @@ next-env.d.ts
 *.swo
 .DS_Store
 Thumbs.db
+
+# Credenciales (Firebase, etc.): nunca versionar
+backend/secrets/
+*firebase*adminsdk*.json

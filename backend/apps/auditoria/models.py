@@ -20,6 +20,7 @@ class Bitacora(models.Model):
         REGISTRAR_INCIDENCIA = "REGISTRAR_INCIDENCIA", "Registrar incidencia"
         EXPORTAR = "EXPORTAR", "Exportar"
         ML_PRED = "ML_PRED", "Predicción ML"
+        AGENTE = "AGENTE", "Agente"
         ACCESO_DENEGADO = "ACCESO_DENEGADO", "Acceso denegado"
 
     class Resultado(models.TextChoices):
@@ -36,8 +37,8 @@ class Bitacora(models.Model):
     )
     usuario_email = models.CharField(max_length=254, blank=True)
     accion = models.CharField(max_length=30, choices=Accion.choices, db_index=True)
-    entidad = models.CharField(max_length=50, blank=True, db_index=True)
-    entidad_id = models.PositiveIntegerField(null=True, blank=True)
+    modulo = models.CharField(max_length=50, blank=True, db_index=True)
+    objeto_id = models.PositiveIntegerField(null=True, blank=True)
     descripcion = models.TextField(blank=True)
     detalle = models.JSONField(default=dict, blank=True)
     resultado = models.CharField(
@@ -46,13 +47,16 @@ class Bitacora(models.Model):
         default=Resultado.OK,
         db_index=True,
     )
-    ip_address = models.GenericIPAddressField(null=True, blank=True)
-    fecha = models.DateTimeField(auto_now_add=True, db_index=True)
+    ip_origen = models.GenericIPAddressField(null=True, blank=True)
+    fecha_hora = models.DateTimeField(auto_now_add=True, db_index=True)
 
     class Meta:
-        ordering = ["-fecha"]
+        ordering = ["-fecha_hora"]
         verbose_name = "Bitácora"
         verbose_name_plural = "Bitácora"
 
     def __str__(self):
-        return f"[{self.fecha:%d/%m/%Y %H:%M}] {self.usuario_email or self.usuario} — {self.accion}"
+        return (
+            f"[{self.fecha_hora:%d/%m/%Y %H:%M}] "
+            f"{self.usuario_email or self.usuario} — {self.accion}"
+        )

@@ -1,5 +1,11 @@
 from django.contrib import admin
-from .models import Deporte, Categoria, Campeonato, Equipo, FichaJugador
+from .models import Facultad, Deporte, Categoria, Campeonato, Equipo, FichaJugador
+
+
+@admin.register(Facultad)
+class FacultadAdmin(admin.ModelAdmin):
+    list_display = ["nombre", "sigla"]
+    search_fields = ["nombre", "sigla"]
 
 
 @admin.register(Deporte)
@@ -17,8 +23,8 @@ class CategoriaAdmin(admin.ModelAdmin):
 
 @admin.register(Campeonato)
 class CampeonatoAdmin(admin.ModelAdmin):
-    list_display  = ["nombre", "deporte", "categoria", "estado", "fecha_inicio", "fecha_fin"]
-    list_filter   = ["estado", "deporte", "formato"]
+    list_display  = ["nombre", "categoria", "estado", "fecha_inicio", "fecha_fin"]
+    list_filter   = ["estado", "categoria", "formato"]
     search_fields = ["nombre"]
     date_hierarchy = "fecha_inicio"
 
@@ -26,19 +32,19 @@ class CampeonatoAdmin(admin.ModelAdmin):
 class FichaJugadorInline(admin.TabularInline):
     model = FichaJugador
     extra = 0
-    fields = ["usuario", "numero_camiseta", "posicion", "activo"]
+    fields = ["nombre", "apellido", "carnet", "numero_camiseta", "posicion", "estado"]
 
 
 @admin.register(Equipo)
 class EquipoAdmin(admin.ModelAdmin):
-    list_display  = ["nombre", "campeonato", "facultad", "activo"]
-    list_filter   = ["campeonato", "activo"]
-    search_fields = ["nombre", "facultad"]
+    list_display  = ["nombre", "facultad", "estado", "delegado"]
+    list_filter   = ["facultad", "estado"]
+    search_fields = ["nombre", "facultad__nombre"]
     inlines       = [FichaJugadorInline]
 
 
 @admin.register(FichaJugador)
 class FichaJugadorAdmin(admin.ModelAdmin):
-    list_display  = ["usuario", "equipo", "numero_camiseta", "posicion", "activo"]
-    list_filter   = ["posicion", "activo"]
-    search_fields = ["usuario__nombre", "usuario__apellido"]
+    list_display  = ["nombre", "apellido", "equipo", "numero_camiseta", "posicion", "estado"]
+    list_filter   = ["posicion", "estado"]
+    search_fields = ["nombre", "apellido", "carnet", "registro"]

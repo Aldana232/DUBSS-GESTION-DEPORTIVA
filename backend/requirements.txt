@@ -27,6 +27,9 @@ scikit-learn==1.5.1
 pandas==2.2.2
 numpy==2.0.1
 joblib==1.4.2
+# Optimizador del fixture (RF11). Con numpy 2.0.1 y protobuf 5.26.
+ortools==9.11.4210
+protobuf>=5.26,<5.27
 
 # ─── Tareas asíncronas (notificaciones) ───────────────────────────────────────
 celery==5.4.0
@@ -35,6 +38,7 @@ django-celery-beat==2.6.0
 
 # ─── APIs externas ────────────────────────────────────────────────────────────
 requests==2.32.3
+google-auth==2.43.0
 # requests 2.32.3 exige chardet<6; reportlab lo instala sin límite.
 chardet==5.2.0
 groq==0.9.0

@@ -1,6 +1,5 @@
 import logging
 
-from django.utils import timezone
 from rest_framework.throttling import BaseThrottle
 
 from .models import Bitacora
@@ -31,8 +30,8 @@ def registrar(
     request=None,
     usuario=None,
     email="",
-    entidad="",
-    entidad_id=None,
+    modulo="",
+    objeto_id=None,
     descripcion="",
     detalle=None,
     resultado="OK",
@@ -43,19 +42,18 @@ def registrar(
             if usuario_solicitante is not None and usuario_solicitante.is_authenticated:
                 usuario = usuario_solicitante
 
-        ip_address = BaseThrottle().get_ident(request) if request is not None else None
+        ip_origen = BaseThrottle().get_ident(request) if request is not None else None
         usuario_email = email or (getattr(usuario, "email", "") if usuario else "")
         return Bitacora.objects.create(
             usuario=usuario,
             usuario_email=usuario_email,
             accion=accion,
-            entidad=entidad,
-            entidad_id=entidad_id,
+            modulo=modulo,
+            objeto_id=objeto_id,
             descripcion=descripcion,
             detalle=_sanear_detalle({} if detalle is None else detalle),
             resultado=resultado,
-            ip_address=ip_address,
-            fecha=timezone.now(),
+            ip_origen=ip_origen,
         )
     except Exception:
         logger.exception("No se pudo registrar la acción de auditoría.")

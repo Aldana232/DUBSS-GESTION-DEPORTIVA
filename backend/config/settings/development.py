@@ -13,6 +13,13 @@ INSTALLED_APPS += ["debug_toolbar"]  # noqa
 MIDDLEWARE.insert(0, "debug_toolbar.middleware.DebugToolbarMiddleware")  # noqa
 INTERNAL_IPS = ["127.0.0.1"]
 
+# Hash de contraseñas liviano en desarrollo: el inicio de sesión pasa de ~2 s a una fracción (producción no cambia).
+PASSWORD_HASHERS = [
+    "config.hashers.Argon2Liviano",
+    "django.contrib.auth.hashers.Argon2PasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+]
+
 # En desarrollo envía emails a la consola
 EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 

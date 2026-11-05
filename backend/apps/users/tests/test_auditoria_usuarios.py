@@ -54,8 +54,8 @@ def test_login_correcto_registra_evento_sin_credenciales(client, usuario):
     assert respuesta.status_code == 200
     registro = Bitacora.objects.get(accion=Bitacora.Accion.LOGIN)
     assert registro.usuario == usuario
-    assert registro.entidad == "usuario"
-    assert registro.entidad_id == usuario.pk
+    assert registro.modulo == "usuario"
+    assert registro.objeto_id == usuario.pk
     assert registro.detalle == {}
     assert "TestPass123!" not in str(registro.detalle)
     assert respuesta.data["access"] not in str(registro.detalle)
@@ -153,7 +153,7 @@ def test_cambio_password_registra_evento_sin_guardar_password(client, usuario):
     assert respuesta.status_code == 200
     registro = Bitacora.objects.get(accion=Bitacora.Accion.CAMBIO_PASSWORD)
     assert registro.usuario == usuario
-    assert registro.entidad_id == usuario.pk
+    assert registro.objeto_id == usuario.pk
     assert registro.detalle == {}
     assert "TestPass123!" not in str(registro.detalle)
     assert "NuevaSegura456!" not in str(registro.detalle)
@@ -168,7 +168,7 @@ def test_alta_administrativa_registra_usuario_y_rol(client, admin):
             "email": "nuevo@uagrm.edu.bo",
             "nombre": "Nuevo",
             "apellido": "Usuario",
-            "rol": Usuario.Rol.ARBITRO,
+            "rol": Usuario.Rol.ORGANIZADOR,
             "password": "NuevaSegura456!",
             "password2": "NuevaSegura456!",
         },
@@ -179,9 +179,9 @@ def test_alta_administrativa_registra_usuario_y_rol(client, admin):
     creado = Usuario.objects.get(email="nuevo@uagrm.edu.bo")
     registro = Bitacora.objects.get(accion=Bitacora.Accion.CREAR)
     assert registro.usuario == admin
-    assert registro.entidad == "usuario"
-    assert registro.entidad_id == creado.pk
-    assert registro.detalle == {"rol": Usuario.Rol.ARBITRO}
+    assert registro.modulo == "usuario"
+    assert registro.objeto_id == creado.pk
+    assert registro.detalle == {"rol": Usuario.Rol.ORGANIZADOR}
     assert "NuevaSegura456!" not in str(registro.detalle)
 
 
@@ -190,7 +190,7 @@ def test_edicion_administrativa_registra_editar_y_cambio_rol(client, admin, usua
 
     respuesta = client.patch(
         reverse("usuario-detalle", kwargs={"pk": usuario.pk}),
-        {"nombre": "Editado", "rol": Usuario.Rol.ARBITRO},
+        {"nombre": "Editado", "rol": Usuario.Rol.ORGANIZADOR},
         format="json",
     )
 
@@ -198,12 +198,12 @@ def test_edicion_administrativa_registra_editar_y_cambio_rol(client, admin, usua
     edicion = Bitacora.objects.get(accion=Bitacora.Accion.EDITAR)
     cambio_rol = Bitacora.objects.get(accion=Bitacora.Accion.CAMBIO_ROL)
     assert edicion.usuario == admin
-    assert edicion.entidad_id == usuario.pk
+    assert edicion.objeto_id == usuario.pk
     assert cambio_rol.usuario == admin
-    assert cambio_rol.entidad_id == usuario.pk
+    assert cambio_rol.objeto_id == usuario.pk
     assert cambio_rol.detalle == {
-        "anterior": Usuario.Rol.DEPORTISTA,
-        "nuevo": Usuario.Rol.ARBITRO,
+        "anterior": Usuario.Rol.DELEGADO,
+        "nuevo": Usuario.Rol.ORGANIZADOR,
     }
 
 
@@ -215,5 +215,5 @@ def test_baja_administrativa_registra_eliminar(client, admin, usuario):
     assert respuesta.status_code == 200
     registro = Bitacora.objects.get(accion=Bitacora.Accion.ELIMINAR)
     assert registro.usuario == admin
-    assert registro.entidad == "usuario"
-    assert registro.entidad_id == usuario.pk
+    assert registro.modulo == "usuario"
+    assert registro.objeto_id == usuario.pk

@@ -42,6 +42,9 @@ LOCAL_APPS = [
     "apps.auditoria",
     "apps.notificaciones",
     "apps.reportes",
+    "apps.quejas",
+    "apps.asistente",
+    "apps.agente",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -95,6 +98,16 @@ DATABASES = {
 AUTH_USER_MODEL = "users.Usuario"
 LOGIN_MAX_INTENTOS = env.int("LOGIN_MAX_INTENTOS", default=5)
 LOGIN_BLOQUEO_MINUTOS = env.int("LOGIN_BLOQUEO_MINUTOS", default=15)
+
+# ─── Reglas deportivas (Fase 3) ───────────────────────────────────────────────
+SANCION_PARTIDOS_ROJA = env.int("SANCION_PARTIDOS_ROJA", default=1)
+AMARILLAS_PARA_SANCION = env.int("AMARILLAS_PARA_SANCION", default=3)
+WALKOVER_GOLES_GANADOR = env.int("WALKOVER_GOLES_GANADOR", default=3)
+
+# ─── Fixture asistido por ML (Fase 5b) ────────────────────────────────────────
+FIXTURE_DESCANSO_MIN_HORAS = env.int("FIXTURE_DESCANSO_MIN_HORAS", default=24)
+ML_FIXTURE_MAX_SEGUNDOS = env.float("ML_FIXTURE_MAX_SEGUNDOS", default=8.0)
+ML_CANDIDATOS_POR_PARTIDO = env.int("ML_CANDIDATOS_POR_PARTIDO", default=40)
 PASSWORD_HASHERS = [
     "django.contrib.auth.hashers.Argon2PasswordHasher",
     "django.contrib.auth.hashers.PBKDF2PasswordHasher",
@@ -140,7 +153,7 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "DEFAULT_PAGINATION_CLASS": "config.pagination.PaginacionEstandar",
     "PAGE_SIZE": 20,
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
@@ -177,6 +190,8 @@ SPECTACULAR_SETTINGS = {
         {"name": "ml",             "description": "Predicciones con Machine Learning"},
         {"name": "notificaciones", "description": "Envío de notificaciones"},
         {"name": "reportes",       "description": "Exportación de reportes"},
+        {"name": "asistente",      "description": "Reportes por voz y órdenes en lenguaje natural"},
+        {"name": "agente",         "description": "Agente del organizador: herramientas, propuestas y confirmación"},
     ],
 }
 
@@ -194,6 +209,7 @@ EMAIL_PORT         = env.int("EMAIL_PORT",      default=587)
 EMAIL_USE_TLS      = env.bool("EMAIL_USE_TLS",  default=True)
 EMAIL_HOST_USER    = env("EMAIL_HOST_USER",     default="")
 EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_TIMEOUT      = 10   # un servidor de correo caído no debe colgar el envío
 
 # ─── Celery (tareas asíncronas) ───────────────────────────────────────────────
 CELERY_BROKER_URL        = env("REDIS_URL", default="redis://redis:6379/0")
@@ -202,8 +218,61 @@ CELERY_ACCEPT_CONTENT    = ["json"]
 CELERY_TASK_SERIALIZER   = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE          = TIME_ZONE
+CELERY_TASK_TIME_LIMIT   = 600           # ninguna tarea puede quedar colgada más de 10 minutos
+CELERY_TASK_SOFT_TIME_LIMIT = 540
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+# Tareas programadas (F6-03). Todas son idempotentes: repetirlas no duplica avisos ni datos.
+from celery.schedules import crontab  # noqa: E402
+
+CELERY_BEAT_SCHEDULE = {
+    "resultados-atipicos": {
+        "task": "ml.revisar_resultados_atipicos", "schedule": crontab(minute=20),
+    },
+    "purgar-claves-de-idempotencia": {
+        "task": "fixture.purgar_operaciones_idempotentes", "schedule": crontab(hour=3, minute=30),
+    },
+    "expirar-acciones-del-agente": {
+        "task": "agente.expirar_acciones", "schedule": crontab(minute="*/10"),
+    },
+    "recordatorios-de-partidos": {
+        "task": "notificaciones.enviar_recordatorios", "schedule": crontab(minute="*/15"),
+    },
+    "actualizar-riesgo-climatico": {
+        "task": "ml.actualizar_riesgo_climatico", "schedule": crontab(minute=5, hour="*/3"),
+    },
+    "reconstruir-historial-de-posiciones": {
+        "task": "fixture.reconstruir_historial", "schedule": crontab(minute=30, hour=2),
+    },
+    "reentrenar-modelos": {
+        "task": "ml.reentrenar_modelos", "schedule": crontab(minute=0, hour=3, day_of_week="sunday"),
+    },
+}
 
 # ─── APIs externas ────────────────────────────────────────────────────────────
 GROQ_API_KEY         = env("GROQ_API_KEY",         default="")
-OPENWEATHER_API_KEY  = env("OPENWEATHER_API_KEY",  default="")
-FIREBASE_SERVER_KEY  = env("FIREBASE_SERVER_KEY",  default="")
+# Clima: Open-Meteo no necesita clave; solo las coordenadas del campus (Santa Cruz de la Sierra).
+CLIMA_LATITUD  = env.float("CLIMA_LATITUD",  default=-17.7833)
+CLIMA_LONGITUD = env.float("CLIMA_LONGITUD", default=-63.1821)
+
+# Push (FCM HTTP v1): ruta del JSON de la cuenta de servicio de Firebase. Sin él, solo se envía correo.
+FCM_CREDENTIALS_FILE = env("FCM_CREDENTIALS_FILE", default="")
+
+# IA del asistente (F6-06). Groq ofrece Whisper (voz a texto) y Llama (interpretar órdenes) con plan gratuito.
+LLM_PROVIDER = env("LLM_PROVIDER", default="groq")          # groq | ollama | reglas
+LLM_MODEL    = env("LLM_MODEL", default="openai/gpt-oss-20b")
+OLLAMA_URL   = env("OLLAMA_URL", default="http://host.docker.internal:11434")
+STT_PROVIDER = env("STT_PROVIDER", default="groq")          # groq | ninguno
+STT_MODEL    = env("STT_MODEL", default="whisper-large-v3-turbo")
+ASISTENTE_AUDIO_MAX_MB = env.int("ASISTENTE_AUDIO_MAX_MB", default=10)
+
+# F7-A — Agente del organizador (LLM con herramientas). Groq con un modelo que soporta function calling.
+AGENTE_PROVIDER = env("AGENTE_PROVIDER", default="groq")
+AGENTE_MODEL = env("AGENTE_MODEL", default="openai/gpt-oss-120b")
+AGENTE_MAX_PASOS = env.int("AGENTE_MAX_PASOS", default=5)               # vueltas al LLM por petición
+AGENTE_MAX_HERRAMIENTAS = env.int("AGENTE_MAX_HERRAMIENTAS", default=8)  # llamadas a herramientas por petición
+AGENTE_TIMEOUT_SEG = env.int("AGENTE_TIMEOUT_SEG", default=60)           # tiempo total por petición
+AGENTE_MENSAJES_HORA = env.int("AGENTE_MENSAJES_HORA", default=60)       # tope de mensajes por usuario y hora
+AGENTE_ACCION_MINUTOS = env.int("AGENTE_ACCION_MINUTOS", default=30)     # vigencia de una acción pendiente
+AGENTE_ANTELACION_HORAS = env.int("AGENTE_ANTELACION_HORAS", default=2)  # no se reprograma a menos de N horas

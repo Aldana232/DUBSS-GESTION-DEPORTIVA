@@ -7,25 +7,36 @@ CU18 — Recomendaciones de actividades (Groq AI)
 CU19 — Bitácora
 CU20 — Predicción de asistencia
 """
-import requests
+import logging
+
 from rest_framework import status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema, OpenApiParameter
-from django.conf import settings
 
+from apps.users.roles import es_admin
 from apps.auditoria.models import Bitacora
 from apps.auditoria.services import registrar
-from apps.users.permissions import EsAdminDUBSS, EsLecturaPublica
+from apps.users.permissions import (
+    EsAdmin,
+    EsAdminUOrganizador,
+    EsAdminUOrganizadorODelegado,
+)
 from apps.fixture.models import Partido
-from .models import PrediccionPartido, PrediccionAsistencia
+from .models import PrediccionAsistencia, RiesgoClimatico
 from .serializers import (
     PrediccionPartidoSerializer, PrediccionAsistenciaSerializer,
     RiesgoClimaticoSerializer,
 )
-from .services.predictor import PredictorResultados
-from .services.clima import ServicioClima
+from .services.predictor import PredictorResultados, informe_modelo
+from .services.predictor import entrenar as predictor_entrenar
+from .services.asistencia import estimar_asistencia
+from .services.recomendaciones import acciones_sugeridas
+from .services.clima import ServicioClima, ultimo_riesgo
+
+
+logger = logging.getLogger(__name__)
 
 
 # ── CU14 — Tablero general de predicciones ─────────────────────────────────────
@@ -33,14 +44,25 @@ from .services.clima import ServicioClima
 @extend_schema(tags=["ml"])
 class TableroPrediccionesView(APIView):
     """CU14 — Tablero con predicciones de todos los partidos próximos de un campeonato."""
-    permission_classes = [EsLecturaPublica]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [EsAdminUOrganizador()]
+        return [EsAdminUOrganizadorODelegado()]
 
     @extend_schema(
         summary="CU14 — Tablero de predicciones del campeonato",
         parameters=[OpenApiParameter("campeonato", int, required=True)],
     )
     def get(self, request):
-        campeonato_id = request.query_params.get("campeonato")
+        return self._consultar(request, persistir=False)
+
+    def post(self, request):
+        return self._consultar(request, persistir=True)
+
+    def _consultar(self, request, *, persistir):
+        campeonato_id = request.data.get("campeonato") if persistir else None
+        campeonato_id = campeonato_id or request.query_params.get("campeonato")
         if not campeonato_id:
             return Response({"error": "Parámetro 'campeonato' requerido."},
                             status=status.HTTP_400_BAD_REQUEST)
@@ -48,6 +70,8 @@ class TableroPrediccionesView(APIView):
         partidos = Partido.objects.filter(
             campeonato_id=campeonato_id,
             estado=Partido.Estado.PROGRAMADO,
+            equipo_local__isnull=False,
+            equipo_visitante__isnull=False,
         ).select_related(
             "equipo_local", "equipo_visitante", "prediccion"
         ).order_by("fecha_hora")[:20]
@@ -56,11 +80,7 @@ class TableroPrediccionesView(APIView):
         resultado = []
 
         for p in partidos:
-            # Genera predicción si no existe
-            try:
-                pred = p.prediccion
-            except PrediccionPartido.DoesNotExist:
-                pred = predictor.predecir(p)
+            pred = predictor.predecir(p, persistir=persistir)
 
             probs = {
                 "local":    pred.prob_victoria_local,
@@ -77,16 +97,27 @@ class TableroPrediccionesView(APIView):
                 "prob_visitante":    round(pred.prob_victoria_visit * 100, 1),
                 "resultado_probable": max(probs, key=probs.get),
                 "confianza":         round(pred.confianza * 100, 1),
+                "datos_suficientes": pred.datos_suficientes,
+                "modelo":            pred.modelo_version,
             })
 
-        registrar(
-            Bitacora.Accion.ML_PRED,
-            request=request,
-            entidad="campeonato",
-            entidad_id=campeonato_id,
-            descripcion="Predicciones del campeonato consultadas.",
-            detalle={"partidos": len(resultado)},
-        )
+        if persistir:
+            registrar(
+                Bitacora.Accion.ML_PRED,
+                request=request,
+                modulo="campeonato",
+                objeto_id=campeonato_id,
+                descripcion="Predicciones del campeonato generadas.",
+                detalle={"partidos": len(resultado)},
+            )
+        else:
+            logger.info(
+                "Consulta del tablero de predicciones.",
+                extra={
+                    "campeonato_id": campeonato_id,
+                    "partidos": len(resultado),
+                },
+            )
         return Response(resultado)
 
 
@@ -95,10 +126,20 @@ class TableroPrediccionesView(APIView):
 @extend_schema(tags=["ml"])
 class PrediccionPartidoView(APIView):
     """CU16 — Predicción de resultado de un partido específico."""
-    permission_classes = [EsLecturaPublica]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [EsAdminUOrganizador()]
+        return [EsAdminUOrganizadorODelegado()]
 
     @extend_schema(summary="CU16 — Predecir resultado de un partido")
     def get(self, request, partido_id):
+        return self._predecir(request, partido_id, persistir=False)
+
+    def post(self, request, partido_id):
+        return self._predecir(request, partido_id, persistir=True)
+
+    def _predecir(self, request, partido_id, *, persistir):
         try:
             partido = Partido.objects.select_related(
                 "equipo_local", "equipo_visitante", "campeonato"
@@ -107,14 +148,24 @@ class PrediccionPartidoView(APIView):
             return Response({"error": "Partido no encontrado."},
                             status=status.HTTP_404_NOT_FOUND)
 
-        pred = PredictorResultados().predecir(partido)
-        registrar(
-            Bitacora.Accion.ML_PRED,
-            request=request,
-            entidad="partido",
-            entidad_id=partido.pk,
-            descripcion="Predicción del resultado del partido generada.",
-        )
+        if partido.equipo_local_id is None or partido.equipo_visitante_id is None:
+            return Response({"error": "El partido aún no tiene los dos equipos definidos."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        pred = PredictorResultados().predecir(partido, persistir=persistir)
+        if persistir:
+            registrar(
+                Bitacora.Accion.ML_PRED,
+                request=request,
+                modulo="partido",
+                objeto_id=partido.pk,
+                descripcion="Predicción del resultado del partido generada.",
+            )
+        else:
+            logger.info(
+                "Consulta de predicción de partido.",
+                extra={"partido_id": partido.pk},
+            )
         return Response(PrediccionPartidoSerializer(pred).data)
 
 
@@ -123,27 +174,52 @@ class PrediccionPartidoView(APIView):
 @extend_schema(tags=["ml"])
 class RiesgoClimaticoView(APIView):
     """CU15 — Pronóstico de riesgo climático para un partido."""
-    permission_classes = [EsLecturaPublica]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [EsAdminUOrganizador()]
+        return [EsAdminUOrganizadorODelegado()]
 
     @extend_schema(summary="CU15 — Riesgo climático del partido")
     def get(self, request, partido_id):
+        return self._consultar(request, partido_id, persistir=False)
+
+    def post(self, request, partido_id):
+        return self._consultar(request, partido_id, persistir=True)
+
+    def _consultar(self, request, partido_id, *, persistir):
         try:
-            partido = Partido.objects.select_related(
-                "cancha__instalacion"
-            ).get(pk=partido_id)
+            partido = Partido.objects.select_related("cancha").get(pk=partido_id)
         except Partido.DoesNotExist:
             return Response({"error": "Partido no encontrado."},
                             status=status.HTTP_404_NOT_FOUND)
 
-        riesgo = ServicioClima().consultar(partido)
+        if partido.equipo_local_id is None or partido.equipo_visitante_id is None:
+            return Response({"error": "El partido aún no tiene los dos equipos definidos."},
+                            status=status.HTTP_400_BAD_REQUEST)
+
+        if not persistir:
+            # F6-07: el GET no consulta la red ni escribe; muestra el último pronóstico guardado.
+            riesgo = ultimo_riesgo(partido)
+            if riesgo is None:
+                return Response({
+                    "partido": partido.pk, "nivel_riesgo": RiesgoClimatico.NivelRiesgo.SIN_DATOS, "calculado": False,
+                    "descripcion": "Aún no se calculó el pronóstico de este partido.",
+                    "recomendacion": "Se actualiza automáticamente; un organizador puede pedirlo ahora.",
+                    "fuente_api": "N/A", "consultado_en": None,
+                })
+            return Response({**RiesgoClimaticoSerializer(riesgo).data, "calculado": True})
+
+        riesgo = ServicioClima().consultar(partido, persistir=True)
         registrar(
             Bitacora.Accion.ML_PRED,
             request=request,
-            entidad="partido",
-            entidad_id=partido.pk,
-            descripcion="Pronóstico de riesgo climático consultado.",
+            modulo="partido",
+            objeto_id=partido.pk,
+            descripcion="Pronóstico de riesgo climático actualizado.",
+            detalle={"nivel": riesgo.nivel_riesgo},
         )
-        return Response(RiesgoClimaticoSerializer(riesgo).data)
+        return Response({**RiesgoClimaticoSerializer(riesgo).data, "calculado": riesgo.nivel_riesgo != "SIN_DATOS"})
 
 
 # ── CU20 — Predicción de asistencia ───────────────────────────────────────────
@@ -151,10 +227,20 @@ class RiesgoClimaticoView(APIView):
 @extend_schema(tags=["ml"])
 class PrediccionAsistenciaView(APIView):
     """CU20 — Estima asistencia de espectadores para un partido."""
-    permission_classes = [EsLecturaPublica]
+
+    def get_permissions(self):
+        if self.request.method == "POST":
+            return [EsAdminUOrganizador()]
+        return [EsAdminUOrganizadorODelegado()]
 
     @extend_schema(summary="CU20 — Predicción de asistencia")
     def get(self, request, partido_id):
+        return self._predecir(request, partido_id, persistir=False)
+
+    def post(self, request, partido_id):
+        return self._predecir(request, partido_id, persistir=True)
+
+    def _predecir(self, request, partido_id, *, persistir):
         try:
             partido = Partido.objects.select_related(
                 "equipo_local", "equipo_visitante",
@@ -164,31 +250,31 @@ class PrediccionAsistenciaView(APIView):
             return Response({"error": "Partido no encontrado."},
                             status=status.HTTP_404_NOT_FOUND)
 
-        # Heurística basada en capacidad y relevancia del partido
-        cancha_cap = partido.cancha.capacidad if partido.cancha else 500
-        base       = min(cancha_cap * 0.6, 800)
-        variacion  = int(base * 0.25)
+        if partido.equipo_local_id is None or partido.equipo_visitante_id is None:
+            return Response({"error": "El partido aún no tiene los dos equipos definidos."},
+                            status=status.HTTP_400_BAD_REQUEST)
 
-        pred, _ = PrediccionAsistencia.objects.update_or_create(
-            partido=partido,
-            defaults={
-                "asistencia_predicha": int(base),
-                "rango_min":           max(0, int(base - variacion)),
-                "rango_max":           int(base + variacion),
-                "factores": {
-                    "capacidad_cancha": cancha_cap,
-                    "fase":             partido.fase,
-                    "jornada":          partido.jornada,
-                },
-            },
-        )
-        registrar(
-            Bitacora.Accion.ML_PRED,
-            request=request,
-            entidad="partido",
-            entidad_id=partido.pk,
-            descripcion="Predicción de asistencia generada.",
-        )
+        valores = estimar_asistencia(partido)
+        if persistir:
+            pred, _ = PrediccionAsistencia.objects.update_or_create(
+                partido=partido,
+                defaults=valores,
+            )
+        else:
+            pred = PrediccionAsistencia(partido=partido, **valores)
+        if persistir:
+            registrar(
+                Bitacora.Accion.ML_PRED,
+                request=request,
+                modulo="partido",
+                objeto_id=partido.pk,
+                descripcion="Predicción de asistencia generada.",
+            )
+        else:
+            logger.info(
+                "Consulta de predicción de asistencia.",
+                extra={"partido_id": partido.pk},
+            )
         return Response(PrediccionAsistenciaSerializer(pred).data)
 
 
@@ -196,93 +282,80 @@ class PrediccionAsistenciaView(APIView):
 
 @extend_schema(tags=["ml"])
 class RecomendacionesView(APIView):
-    """CU18 — Recomendaciones de actividades deportivas generadas con Groq AI."""
-    permission_classes = [IsAuthenticated]
+    """CU18 — Acciones sugeridas para organizar los torneos, calculadas con datos reales."""
+    permission_classes = [EsAdminUOrganizador]
 
-    @extend_schema(summary="CU18 — Recomendaciones de actividades deportivas")
+    @extend_schema(summary="CU18 — Acciones sugeridas para el organizador")
     def get(self, request):
-        usuario    = request.user
-        groq_key   = settings.GROQ_API_KEY
-
-        prompt = (
-            f"Soy un estudiante universitario de la UAGRM con rol '{usuario.rol}' "
-            f"en la facultad '{usuario.facultad or 'no especificada'}'. "
-            "Dame 5 recomendaciones concretas de actividades deportivas universitarias "
-            "que puedo practicar esta semana. Sé breve y directo. Responde en español."
-        )
-
-        if not groq_key:
-            # Respuesta de ejemplo sin API key
-            return Response({
-                "recomendaciones": [
-                    "Participa en el torneo de fútbol sala de tu facultad.",
-                    "Inscríbete en las clases de natación de la DUBSS los martes y jueves.",
-                    "Únete al equipo de voleibol mixto — los entrenamientos son los lunes.",
-                    "Aprovecha las canchas de básquetbol disponibles de 7am a 9am.",
-                    "Consulta la agenda semanal de la DUBSS para eventos deportivos abiertos.",
-                ],
-                "fuente": "ejemplo (configura GROQ_API_KEY para respuestas dinámicas)",
-            })
-
-        try:
-            resp = requests.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {groq_key}",
-                    "Content-Type":  "application/json",
-                },
-                json={
-                    "model":       "llama3-8b-8192",
-                    "messages":    [{"role": "user", "content": prompt}],
-                    "max_tokens":  400,
-                    "temperature": 0.7,
-                },
-                timeout=15,
-            )
-            resp.raise_for_status()
-            texto = resp.json()["choices"][0]["message"]["content"]
-            return Response({"recomendaciones": texto, "fuente": "Groq / LLaMA3"})
-        except Exception as e:
-            return Response(
-                {"error": f"Error al consultar Groq: {str(e)}"},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+        acciones = acciones_sugeridas()
+        return Response({"acciones": acciones, "total": len(acciones), "fuente": "datos del sistema"})
 
 
 # ── Entrenamiento del modelo ML ────────────────────────────────────────────────
 
 @extend_schema(tags=["ml"])
 class EntrenarModeloView(APIView):
-    """Entrena el modelo de predicción con el historial de un campeonato."""
-    permission_classes = [EsAdminDUBSS]
+    """Entrena el predictor de resultados con todo el historial y registra el informe (F6-01)."""
+    permission_classes = [EsAdmin]
 
-    @extend_schema(
-        summary="Entrenar modelo ML con historial del campeonato",
-        parameters=[OpenApiParameter("campeonato_id", int, required=True)],
-    )
+    @extend_schema(summary="Entrenar el predictor de resultados (solo administrador)")
     def post(self, request):
-        campeonato_id = request.data.get("campeonato_id")
-        if not campeonato_id:
-            return Response({"error": "campeonato_id requerido."},
-                            status=status.HTTP_400_BAD_REQUEST)
-        resultado = PredictorResultados().entrenar(campeonato_id)
+        resultado = predictor_entrenar()
+        entrenado = bool(resultado.get("entrenado"))
         registrar(
             Bitacora.Accion.ML_PRED,
             request=request,
-            entidad="campeonato",
-            entidad_id=campeonato_id,
-            descripcion=(
-                "Entrenamiento del modelo de resultados fallido."
-                if "error" in resultado
-                else "Modelo de resultados entrenado."
-            ),
-            detalle={
-                "partidos_entrenados": resultado.get("partidos_entrenados", 0),
-            },
-            resultado=(
-                Bitacora.Resultado.ERROR
-                if "error" in resultado
-                else Bitacora.Resultado.OK
-            ),
+            modulo="ml",
+            descripcion=("Predictor de resultados entrenado." if entrenado
+                         else "Entrenamiento del predictor omitido por datos insuficientes."),
+            detalle={"version": resultado.get("version"), "partidos": resultado.get("partidos"),
+                     "activo": resultado.get("activo")},
+            resultado=Bitacora.Resultado.OK if entrenado else Bitacora.Resultado.ERROR,
         )
-        return Response(resultado)
+        return Response(resultado, status=status.HTTP_200_OK if entrenado else status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(summary="Estado e informe del predictor de resultados")
+    def get(self, request):
+        return Response(informe_modelo())
+
+    def get_permissions(self):
+        return [EsAdminUOrganizador()] if self.request.method == "GET" else [EsAdmin()]
+
+
+# ── Puntuador de asignaciones (RF11) ───────────────────────────────────────────
+
+@extend_schema(tags=["ml"])
+class ModeloAsignacionView(APIView):
+    """Estado del modelo que puntúa las asignaciones del fixture (versión y métricas)."""
+    permission_classes = [EsAdminUOrganizador]
+
+    @extend_schema(summary="RF11 — Estado del modelo de asignación de fixture")
+    def get(self, request):
+        from .services.asignacion_scorer import info_modelo
+        from .models import MuestraAsignacion
+
+        return Response({
+            **info_modelo(),
+            "muestras_totales": MuestraAsignacion.objects.count(),
+            "muestras_reales": MuestraAsignacion.objects.filter(origen="REAL").count(),
+        })
+
+    @extend_schema(summary="RF11 — Reentrenar el modelo de asignación con el historial real")
+    def post(self, request):
+        from .services.asignacion_scorer import ModeloNoDisponible, reentrenar
+
+        if not es_admin(request.user):
+            raise PermissionDenied("Solo un administrador puede reentrenar el modelo.")
+        try:
+            scorer = reentrenar()
+        except ModeloNoDisponible as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        registrar(
+            Bitacora.Accion.ML_PRED,
+            request=request,
+            modulo="ml",
+            descripcion="Modelo de asignación de fixture reentrenado.",
+            detalle={"version": scorer.version, "exactitud": scorer.metricas["exactitud"],
+                     "muestras": scorer.metricas["muestras"]},
+        )
+        return Response({"entrenado": True, **scorer.info()})

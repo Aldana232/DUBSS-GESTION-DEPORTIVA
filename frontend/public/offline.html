@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#d21115">
+  <title>Sin conexión — DUBSS</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px;
+           font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #fff; text-align: center;
+           background: radial-gradient(circle at 20% 10%, #d21115 0%, #8a0c0f 45%, #171a23 100%); }
+    main { max-width: 360px; }
+    img { width: 96px; height: 96px; border-radius: 50%; background: #fff; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+    h1 { margin: 20px 0 8px; font-size: 1.4rem; }
+    p { margin: 0 0 20px; line-height: 1.5; color: #fecaca; }
+    button { border: 0; border-radius: 12px; padding: 12px 22px; font-size: 1rem; font-weight: 600; color: #8a0c0f; background: #fff; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/logo-dubss.png" alt="Escudo de la DUBSS" onerror="this.hidden=true">
+    <h1>Sin conexión</h1>
+    <p id="mensaje">No se pudo contactar con el servidor. Si se está iniciando, esta página se recargará sola en cuanto responda. Si ya abriste la planilla en este celular, ábrela desde el ícono de la app: funciona sin señal.</p>
+    <button type="button" onclick="location.reload()">Reintentar</button>
+  </main>
+  <script>
+    // Si el servidor estaba reiniciándose, vuelve a entrar apenas responda (sin que la persona tenga que hacer nada).
+    var intentar = function () {
+      fetch("/login", { cache: "no-store" }).then(function (r) { if (r.ok) location.reload(); }).catch(function () {});
+    };
+    setInterval(intentar, 4000);
+  </script>
+</body>
+</html>

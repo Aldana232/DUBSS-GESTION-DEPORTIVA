@@ -5,13 +5,8 @@ Vistas de autenticación: registro, login JWT, refresh, logout.
 from rest_framework import status, generics
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.token_blacklist.models import (
-    BlacklistedToken,
-    OutstandingToken,
-)
 from drf_spectacular.utils import extend_schema
 from django.db import transaction
 
@@ -22,9 +17,10 @@ from ..serializers import (
     TokenPersonalizadoSerializer,
     CambioPasswordSerializer,
 )
-from ..permissions import EsAdminDUBSS
+from ..permissions import EsAdmin, EsCuentaConPanel
 from ..throttles import LoginRateThrottle
 from ..exceptions import ThrottledES
+from ..services import invalidar_tokens_usuario
 
 
 @extend_schema(
@@ -34,7 +30,7 @@ from ..exceptions import ThrottledES
 class RegistroView(generics.CreateAPIView):
     """Alta de cuenta por el administrador (RF2). El registro público está cerrado."""
     serializer_class = UsuarioAdminCreateSerializer
-    permission_classes = [EsAdminDUBSS]
+    permission_classes = [EsAdmin]
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -43,8 +39,8 @@ class RegistroView(generics.CreateAPIView):
         registrar(
             Bitacora.Accion.CREAR,
             request=request,
-            entidad="usuario",
-            entidad_id=usuario.pk,
+            modulo="usuario",
+            objeto_id=usuario.pk,
             descripcion="Usuario creado por un administrador.",
             detalle={"rol": usuario.rol},
         )
@@ -85,7 +81,7 @@ class LogoutView(APIView):
     """
     Cierre de sesión: invalida el refresh token (blacklist JWT).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [EsCuentaConPanel]
 
     def post(self, request):
         try:
@@ -118,7 +114,7 @@ class CambioPasswordView(APIView):
     """
     CU02 — Cambio de contraseña del usuario autenticado.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [EsCuentaConPanel]
 
     def post(self, request):
         serializer = CambioPasswordSerializer(data=request.data)
@@ -135,9 +131,7 @@ class CambioPasswordView(APIView):
             user.set_password(serializer.validated_data["password_nuevo"])
             user.save(update_fields=["password"])
 
-            tokens_previos = OutstandingToken.objects.filter(user=user)
-            for token in tokens_previos:
-                BlacklistedToken.objects.get_or_create(token=token)
+            invalidar_tokens_usuario(user)
 
             refresh = TokenPersonalizadoSerializer.get_token(user)
             access = refresh.access_token
@@ -145,8 +139,8 @@ class CambioPasswordView(APIView):
         registrar(
             Bitacora.Accion.CAMBIO_PASSWORD,
             request=request,
-            entidad="usuario",
-            entidad_id=user.pk,
+            modulo="usuario",
+            objeto_id=user.pk,
             descripcion="Contraseña actualizada.",
         )
 

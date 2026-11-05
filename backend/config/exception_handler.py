@@ -1,3 +1,6 @@
+from django.db.models import ProtectedError
+from rest_framework import status
+from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
 
 from apps.auditoria.models import Bitacora
@@ -5,6 +8,12 @@ from apps.auditoria.services import registrar
 
 
 def exception_handler(exc, context):
+    if isinstance(exc, ProtectedError):
+        # Borrar algo que otros registros usan: respuesta clara en vez de un 500.
+        return Response(
+            {"detail": "No se puede eliminar porque está en uso por otros registros."},
+            status=status.HTTP_409_CONFLICT,
+        )
     response = drf_exception_handler(exc, context)
     request = context.get("request")
     usuario = getattr(request, "user", None)
@@ -19,7 +28,7 @@ def exception_handler(exc, context):
             Bitacora.Accion.ACCESO_DENEGADO,
             request=request,
             usuario=usuario,
-            entidad="api",
+            modulo="api",
             descripcion="Acceso denegado a un recurso.",
             detalle={
                 "metodo": request.method,

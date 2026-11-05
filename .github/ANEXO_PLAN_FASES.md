@@ -57,4 +57,4 @@ Al cerrar cada fase (F0, F1, F2, F3), revisar el `git diff` de las tareas de la 
 
 - Las migraciones de datos (`COORDINADOR→DELEGADO`, `ARBITRO→ORGANIZADOR`, `Facultad` desde texto libre) deben mostrar primero el conteo de filas afectadas y ser reversibles o, al menos, no destructivas.
 - `ExclusionConstraint` requiere la extensión `btree_gist` de PostgreSQL (migración `BtreeGistExtension`) y que la base de test la permita.
-- No resetear la base de desarrollo sin avisar: usar `seed_demo` solo cuando se confirme que no hay datos reales.
+- No resetear la base de desarrollo sin avisar: usar `seed_realista` (reemplaza a `seed_demo`) solo cuando se confirme que no hay datos reales.

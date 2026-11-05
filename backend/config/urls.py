@@ -21,6 +21,7 @@ urlpatterns = [
 
     # ── Módulos de la API ────────────────────────────────────────────────────
     path(API_V1 + "auth/",           include("apps.users.urls.auth_urls")),
+    path(API_V1,                    include("apps.users.urls.root_urls")),
     path(API_V1 + "usuarios/",       include("apps.users.urls.user_urls")),
     path(API_V1 + "deportes/",       include("apps.deportes.urls")),
     path(API_V1 + "instalaciones/",  include("apps.instalaciones.urls")),
@@ -29,6 +30,9 @@ urlpatterns = [
     path(API_V1 + "ml/",             include("apps.ml.urls")),
     path(API_V1 + "notificaciones/", include("apps.notificaciones.urls")),
     path(API_V1 + "reportes/",       include("apps.reportes.urls")),
+    path(API_V1 + "quejas/",         include("apps.quejas.urls")),
+    path(API_V1 + "asistente/",      include("apps.asistente.urls")),
+    path(API_V1 + "agente/",         include("apps.agente.urls")),
 
     # ── Swagger / OpenAPI ─────────────────────────────────────────────────────
     path("api/schema/",         SpectacularAPIView.as_view(),        name="schema"),

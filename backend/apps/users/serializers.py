@@ -5,7 +5,7 @@ Serializers para registro, login y gestión de usuarios.
 from datetime import timedelta
 
 from rest_framework import serializers
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, PermissionDenied
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.password_validation import validate_password
 from django.conf import settings
@@ -15,12 +15,26 @@ from apps.auditoria.models import Bitacora
 from apps.auditoria.services import registrar
 from .exceptions import ThrottledES
 from .models import Usuario
+from .roles import es_superadmin
+
+
+def validar_facultad_delegado(attrs, instance=None):
+    rol = attrs.get("rol", getattr(instance, "rol", None))
+    facultad = attrs.get("facultad", getattr(instance, "facultad", None))
+    if rol == Usuario.Rol.DELEGADO and facultad is None:
+        raise serializers.ValidationError(
+            {"facultad": "La facultad es obligatoria para las cuentas DELEGADO."}
+        )
 
 
 class UsuarioAdminCreateSerializer(serializers.ModelSerializer):
     """Alta administrativa de usuario con validación de contraseña."""
     password  = serializers.CharField(write_only=True, required=True, validators=[validate_password])
     password2 = serializers.CharField(write_only=True, required=True, label="Confirmar contraseña")
+
+    def validate_ci(self, valor):
+        # El CI es único: un campo vacío debe guardarse como NULL, no como "".
+        return (valor or "").strip() or None
 
     class Meta:
         model  = Usuario
@@ -32,6 +46,15 @@ class UsuarioAdminCreateSerializer(serializers.ModelSerializer):
         extra_kwargs = {"rol": {"required": True}}
 
     def validate(self, attrs):
+        request = self.context.get("request")
+        if (
+            attrs.get("rol") == Usuario.Rol.SUPERADMIN
+            and not es_superadmin(getattr(request, "user", None))
+        ):
+            raise PermissionDenied(
+                "Solo un superadministrador puede crear cuentas SUPERADMIN."
+            )
+        validar_facultad_delegado(attrs)
         if attrs["password"] != attrs.pop("password2"):
             raise serializers.ValidationError({"password": "Las contraseñas no coinciden."})
         return attrs
@@ -40,9 +63,21 @@ class UsuarioAdminCreateSerializer(serializers.ModelSerializer):
         return Usuario.objects.create_user(**validated_data)
 
 
+class RestablecerPasswordAdminSerializer(serializers.Serializer):
+    password_nuevo = serializers.CharField(
+        required=True,
+        write_only=True,
+        validators=[validate_password],
+    )
+
+
 class UsuarioSerializer(serializers.ModelSerializer):
     """Datos del perfil propio; los campos de rol y estado son solo lectura."""
     nombre_completo = serializers.CharField(read_only=True)
+
+    def validate_ci(self, valor):
+        # El CI es único: un campo vacío debe guardarse como NULL, no como "".
+        return (valor or "").strip() or None
 
     class Meta:
         model  = Usuario
@@ -62,6 +97,10 @@ class UsuarioAdminSerializer(serializers.ModelSerializer):
     """Serializer administrativo para consultar y editar cuentas de usuario."""
     nombre_completo = serializers.CharField(read_only=True)
 
+    def validate_ci(self, valor):
+        # El CI es único: un campo vacío debe guardarse como NULL, no como "".
+        return (valor or "").strip() or None
+
     class Meta:
         model = Usuario
         fields = [
@@ -75,6 +114,22 @@ class UsuarioAdminSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         request = self.context.get("request")
         usuario_solicitante = getattr(request, "user", None)
+        if (
+            self.instance is not None
+            and es_superadmin(self.instance)
+            and not es_superadmin(usuario_solicitante)
+        ):
+            raise PermissionDenied(
+                "Solo un superadministrador puede editar una cuenta SUPERADMIN."
+            )
+        if (
+            attrs.get("rol") == Usuario.Rol.SUPERADMIN
+            and not es_superadmin(usuario_solicitante)
+        ):
+            raise PermissionDenied(
+                "Solo un superadministrador puede asignar el rol SUPERADMIN."
+            )
+        validar_facultad_delegado(attrs, self.instance)
         if self.instance is not None and usuario_solicitante is not None:
             es_propio = self.instance.pk == usuario_solicitante.pk
             if es_propio and attrs.get("rol", self.instance.rol) != self.instance.rol:
@@ -141,8 +196,8 @@ class TokenPersonalizadoSerializer(TokenObtainPairSerializer):
                 request=self.context.get("request"),
                 usuario=usuario,
                 email=email or "",
-                entidad="usuario",
-                entidad_id=usuario.pk if usuario is not None else None,
+                modulo="usuario",
+                objeto_id=usuario.pk if usuario is not None else None,
                 descripcion="Intento de inicio de sesión fallido.",
                 resultado=Bitacora.Resultado.DENEGADO,
             )
@@ -170,8 +225,8 @@ class TokenPersonalizadoSerializer(TokenObtainPairSerializer):
             Bitacora.Accion.LOGIN,
             request=self.context.get("request"),
             usuario=self.user,
-            entidad="usuario",
-            entidad_id=self.user.pk,
+            modulo="usuario",
+            objeto_id=self.user.pk,
             descripcion="Inicio de sesión correcto.",
         )
         # También retorna info del usuario en el cuerpo de la respuesta
@@ -186,8 +241,8 @@ class TokenPersonalizadoSerializer(TokenObtainPairSerializer):
             request=self.context.get("request"),
             usuario=usuario,
             email=usuario.email,
-            entidad="usuario",
-            entidad_id=usuario.pk,
+            modulo="usuario",
+            objeto_id=usuario.pk,
             descripcion="Intento de inicio de sesión en una cuenta bloqueada.",
             resultado=Bitacora.Resultado.DENEGADO,
         )

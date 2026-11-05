@@ -15,7 +15,7 @@ class PrediccionPartidoSerializer(serializers.ModelSerializer):
             "id", "partido",
             "prob_victoria_local", "prob_empate", "prob_victoria_visit",
             "goles_local_pred", "goles_visit_pred",
-            "confianza", "modelo_version",
+            "confianza", "datos_suficientes", "modelo_version",
             "resultado_probable", "generado_en",
         ]
         read_only_fields = fields
@@ -57,3 +57,5 @@ class TableroPrediccionesSerializer(serializers.Serializer):
     prob_visitante   = serializers.FloatField()
     resultado_probable = serializers.CharField()
     confianza        = serializers.FloatField()
+    datos_suficientes = serializers.BooleanField()
+    modelo           = serializers.CharField()

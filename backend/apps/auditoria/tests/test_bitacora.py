@@ -26,7 +26,7 @@ def usuario(db):
         password="TestPass123!",
         nombre="Usuario",
         apellido="Prueba",
-        rol=Usuario.Rol.DEPORTISTA,
+        rol=Usuario.Rol.JUGADOR,
     )
 
 
@@ -48,17 +48,17 @@ def test_registrar_guarda_datos_y_direccion_ip(usuario):
     registro = registrar(
         Bitacora.Accion.CREAR,
         request=request,
-        entidad="usuario",
-        entidad_id=42,
+        modulo="usuario",
+        objeto_id=42,
         descripcion="Cuenta creada",
     )
 
     assert registro.usuario == usuario
     assert registro.accion == Bitacora.Accion.CREAR
-    assert registro.entidad == "usuario"
-    assert registro.entidad_id == 42
+    assert registro.modulo == "usuario"
+    assert registro.objeto_id == 42
     assert registro.descripcion == "Cuenta creada"
-    assert registro.ip_address == "192.0.2.10"
+    assert registro.ip_origen == "192.0.2.10"
 
 
 def test_registrar_toma_usuario_autenticado_del_request(usuario):
@@ -113,7 +113,7 @@ def test_endpoint_bitacora_requiere_admin(client):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("rol", [Usuario.Rol.DEPORTISTA, Usuario.Rol.COORDINADOR])
+@pytest.mark.parametrize("rol", [Usuario.Rol.JUGADOR, Usuario.Rol.DELEGADO])
 def test_endpoint_bitacora_deniega_roles_no_admin(client, rol):
     solicitante = Usuario.objects.create_user(
         email=f"{rol.lower()}@uagrm.edu.bo",
@@ -130,7 +130,7 @@ def test_endpoint_bitacora_deniega_roles_no_admin(client, rol):
 @pytest.mark.django_db
 def test_admin_consulta_bitacora_paginada(client, admin):
     client.force_authenticate(user=admin)
-    registrar(Bitacora.Accion.CREAR, usuario=admin, entidad="usuario")
+    registrar(Bitacora.Accion.CREAR, usuario=admin, modulo="usuario")
 
     respuesta = client.get(reverse("auditoria-bitacora"))
 
@@ -146,17 +146,17 @@ def test_admin_filtra_bitacora_por_accion_resultado_y_fecha(client, admin):
     registro_ok = registrar(
         Bitacora.Accion.CREAR,
         usuario=admin,
-        entidad="usuario",
+        modulo="usuario",
         resultado=Bitacora.Resultado.OK,
     )
     registro_denegado = registrar(
         Bitacora.Accion.EDITAR,
         usuario=admin,
-        entidad="usuario",
+        modulo="usuario",
         resultado=Bitacora.Resultado.DENEGADO,
     )
     Bitacora.objects.filter(pk=registro_ok.pk).update(
-        fecha=timezone.now() - timedelta(days=2)
+        fecha_hora=timezone.now() - timedelta(days=2)
     )
     fecha_inicio = (timezone.now() - timedelta(days=1)).isoformat()
     fecha_fin = (timezone.now() + timedelta(minutes=1)).isoformat()
@@ -166,7 +166,7 @@ def test_admin_filtra_bitacora_por_accion_resultado_y_fecha(client, admin):
     por_resultado = client.get(url, {"resultado": Bitacora.Resultado.DENEGADO})
     por_rango = client.get(
         url,
-        {"fecha__gte": fecha_inicio, "fecha__lte": fecha_fin},
+        {"fecha_hora__gte": fecha_inicio, "fecha_hora__lte": fecha_fin},
     )
 
     assert por_accion.data["count"] == 1

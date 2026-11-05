@@ -1,0 +1,18 @@
+# Modo rápido para PROBAR el sistema (no para programar).
+#
+#   docker compose -f docker-compose.dev.yml -f docker-compose.rapido.yml up -d --build frontend backend
+#
+# - Frontend: versión de producción (`next build` + `next start`). Sin compilar al abrir cada pantalla y sin vigilar
+#   archivos: las pantallas abren en una fracción de segundo. La primera vez compila (2 a 5 min).
+# - Backend: sin recarga automática (no revisa el disco cada segundo).
+# Para volver a programar con recarga en caliente:
+#   docker compose -f docker-compose.dev.yml up -d frontend backend      (y borrar la carpeta frontend/.next)
+services:
+  frontend:
+    # Compila solo si no hay una compilación hecha: así los reinicios de Docker tardan segundos y no minutos.
+    # Para recompilar tras cambiar el código: borrar la carpeta frontend/.next y reiniciar este servicio.
+    command: sh -c "[ -f .next/BUILD_ID ] || npm run build; npm run start"
+    environment:
+      - WATCHPACK_POLLING=false
+  backend:
+    command: python manage.py runserver 0.0.0.0:8000 --noreload

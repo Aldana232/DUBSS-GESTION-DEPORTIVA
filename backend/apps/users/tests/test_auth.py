@@ -21,7 +21,7 @@ def usuario_data():
         "apellido":  "Pérez",
         "password":  "TestPass123!",
         "password2": "TestPass123!",
-        "rol":       "DEPORTISTA",
+        "rol":       Usuario.Rol.JUGADOR,
     }
 
 
@@ -58,31 +58,33 @@ class TestRegistro:
         assert response.status_code == 401
         assert not Usuario.objects.filter(email=usuario_data["email"]).exists()
 
-    def test_registro_deportista_prohibido(self, client, usuario_data, usuario_creado):
+    def test_registro_usuario_autenticado_no_admin_prohibido(
+        self, client, usuario_data, usuario_creado
+    ):
         client.force_authenticate(user=usuario_creado)
         response = client.post(reverse("auth-registro"), usuario_data, format="json")
         assert response.status_code == 403
         assert Usuario.objects.count() == 1
 
-    def test_registro_coordinador_prohibido(self, client, usuario_data, db):
-        coordinador = Usuario.objects.create_user(
-            email="coordinador@uagrm.edu.bo",
+    def test_registro_delegado_prohibido(self, client, usuario_data, db):
+        delegado = Usuario.objects.create_user(
+            email="delegado@uagrm.edu.bo",
             password="CoordPass123!",
             nombre="Coordinador",
             apellido="Facultad",
-            rol=Usuario.Rol.COORDINADOR,
+            rol=Usuario.Rol.DELEGADO,
         )
-        client.force_authenticate(user=coordinador)
+        client.force_authenticate(user=delegado)
         response = client.post(reverse("auth-registro"), usuario_data, format="json")
         assert response.status_code == 403
         assert Usuario.objects.count() == 1
 
-    def test_admin_crea_usuario_arbitro_sin_tokens_ni_password(self, client, usuario_data, admin_creado):
+    def test_admin_crea_usuario_organizador_sin_tokens_ni_password(self, client, usuario_data, admin_creado):
         client.force_authenticate(user=admin_creado)
-        usuario_data["rol"] = Usuario.Rol.ARBITRO
+        usuario_data["rol"] = Usuario.Rol.ORGANIZADOR
         response = client.post(reverse("auth-registro"), usuario_data, format="json")
         assert response.status_code == 201
-        assert Usuario.objects.get(email=usuario_data["email"]).rol == Usuario.Rol.ARBITRO
+        assert Usuario.objects.get(email=usuario_data["email"]).rol == Usuario.Rol.ORGANIZADOR
         assert "tokens" not in response.data
         assert "password" not in response.data
         assert "password" not in response.data["usuario"]
@@ -115,7 +117,7 @@ class TestRegistro:
         client.force_authenticate(user=admin_creado)
         usuario_data.update(
             {
-                "rol": Usuario.Rol.ARBITRO,
+                "rol": Usuario.Rol.ORGANIZADOR,
                 "is_superuser": True,
                 "is_staff": True,
             }
@@ -142,7 +144,7 @@ class TestLogin:
         assert "access"  in response.data
         assert "refresh" in response.data
         assert "usuario" in response.data
-        assert response.data["usuario"]["rol"] == "DEPORTISTA"
+        assert response.data["usuario"]["rol"] == Usuario.Rol.DELEGADO
 
     def test_login_credenciales_incorrectas(self, client, usuario_creado):
         url = reverse("auth-login")
@@ -189,7 +191,7 @@ class TestPerfil:
         )
         usuario_creado.refresh_from_db()
         assert response.status_code == 200
-        assert usuario_creado.rol == Usuario.Rol.DEPORTISTA
+        assert usuario_creado.rol == Usuario.Rol.DELEGADO
 
     def test_patch_perfil_no_cambia_facultad(self, client, usuario_creado):
         client.force_authenticate(user=usuario_creado)
@@ -200,7 +202,7 @@ class TestPerfil:
         )
         usuario_creado.refresh_from_db()
         assert response.status_code == 200
-        assert usuario_creado.facultad == ""
+        assert usuario_creado.facultad is None
 
     def test_patch_perfil_no_cambia_is_active(self, client, usuario_creado):
         client.force_authenticate(user=usuario_creado)
@@ -232,14 +234,14 @@ class TestUsuariosAdmin:
         client.force_authenticate(user=admin_creado)
         response = client.patch(
             reverse("usuario-detalle", kwargs={"pk": usuario_creado.pk}),
-            {"rol": Usuario.Rol.ARBITRO},
+            {"rol": Usuario.Rol.ORGANIZADOR},
             format="multipart",
         )
         usuario_creado.refresh_from_db()
         assert response.status_code == 200
-        assert usuario_creado.rol == Usuario.Rol.ARBITRO
+        assert usuario_creado.rol == Usuario.Rol.ORGANIZADOR
 
-    @pytest.mark.parametrize("rol", [Usuario.Rol.DEPORTISTA, Usuario.Rol.COORDINADOR])
+    @pytest.mark.parametrize("rol", [Usuario.Rol.JUGADOR, Usuario.Rol.DELEGADO])
     def test_usuario_no_admin_no_puede_editar_detalle(
         self, client, usuario_creado, rol, db
     ):
@@ -253,7 +255,7 @@ class TestUsuariosAdmin:
         client.force_authenticate(user=solicitante)
         response = client.patch(
             reverse("usuario-detalle", kwargs={"pk": usuario_creado.pk}),
-            {"rol": Usuario.Rol.ARBITRO},
+            {"rol": Usuario.Rol.ORGANIZADOR},
             format="multipart",
         )
         assert response.status_code == 403
@@ -262,7 +264,7 @@ class TestUsuariosAdmin:
         client.force_authenticate(user=admin_creado)
         response = client.patch(
             reverse("usuario-detalle", kwargs={"pk": admin_creado.pk}),
-            {"rol": Usuario.Rol.ARBITRO},
+            {"rol": Usuario.Rol.ORGANIZADOR},
             format="multipart",
         )
         admin_creado.refresh_from_db()

@@ -2,10 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: var(--font-inter), system-ui, sans-serif; }
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body { @apply bg-ink-50 text-ink-900 antialiased; }
+  /* Foco visible y consistente para teclado (accesibilidad). */
+  :focus-visible { @apply outline-none ring-2 ring-brand-600 ring-offset-2 ring-offset-white; }
+  ::selection { @apply bg-brand-100 text-brand-900; }
+}
 
-input:focus, select:focus, textarea:focus {
-  outline: 2px solid #1a6b3c;
-  outline-offset: 0;
+@layer components {
+  .scroll-thin { scrollbar-width: thin; scrollbar-color: theme("colors.ink.300") transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
