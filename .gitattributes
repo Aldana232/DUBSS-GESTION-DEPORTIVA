@@ -1,2 +1,9 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Archivos binarios: nunca convertir saltos de linea
+*.pdf binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.joblib binary
