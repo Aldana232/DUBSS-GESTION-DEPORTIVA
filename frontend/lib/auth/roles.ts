@@ -104,6 +104,7 @@ export function esRutaPublica(pathname: string): boolean {
   return (
     pathname === "/" ||
     pathname === "/login" ||
+    pathname === "/corporativo" || pathname.startsWith("/corporativo/") ||   // sitio corporativo y sus archivos (ficha PDF)
     pathname === "/campeonatos" || pathname.startsWith("/campeonatos/") ||
     pathname === "/partidos" || pathname.startsWith("/partidos/")
   );

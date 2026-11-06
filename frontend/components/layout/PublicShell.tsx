@@ -11,6 +11,7 @@ import { Logo } from "./Logo";
 const ENLACES = [
   { href: "/", label: "Inicio" },
   { href: "/campeonatos", label: "Campeonatos" },
+  { href: "/corporativo", label: "Producto" },
 ];
 
 /** Cabecera y pie del sitio público (sin sesión obligatoria). */
@@ -74,7 +75,10 @@ export function PublicShell({ children }: { children: ReactNode }) {
       <footer className="border-t border-ink-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-5 text-xs text-ink-500 sm:flex-row sm:px-6">
           <p>Dirección Universitaria de Bienestar Social y Salud — U.A.G.R.M.</p>
-          <p>Santa Cruz de la Sierra, Bolivia</p>
+          <p className="flex flex-wrap items-center justify-center gap-x-3">
+            <span>Santa Cruz de la Sierra, Bolivia</span>
+            <Link href="/corporativo" className="font-medium text-brand-700 underline">Sitio corporativo</Link>
+          </p>
         </div>
       </footer>
     </div>

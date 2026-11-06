@@ -24,6 +24,13 @@ export function middleware(request: NextRequest) {
   const autenticado = vigente || renovable;
   const rol = vigente ? access?.rol : undefined;
 
+  // Error de tipeo frecuente al compartir el enlace ("/corporativo," o "/corporativo."): lleva al sitio, no al login.
+  let ruta = pathname;
+  try { ruta = decodeURIComponent(pathname); } catch { /* ruta mal codificada: se evalúa tal cual */ }
+  if (/^\/corporativo[^\w/%-]+$/.test(ruta)) {
+    return NextResponse.redirect(new URL("/corporativo", request.url));
+  }
+
   if (pathname === "/login") {
     if (autenticado) return NextResponse.redirect(new URL((rol && ROLE_HOME[rol]) || "/gestion", request.url));
     return NextResponse.next();
