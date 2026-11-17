@@ -1,33 +1,29 @@
-# ── Etapa 1: dependencias ─────────────────────────────────────────────────────
-FROM node:20-alpine AS deps
+# ─── Imagen de PRODUCCIÓN del frontend (Next.js en modo «standalone») ───
+FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 RUN npm ci
 
-# ── Etapa 2: build ────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-# ── Etapa 3: producción ───────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production \
+    NEXT_TELEMETRY_DISABLED=1 \
+    PORT=3000 \
+    HOSTNAME=0.0.0.0
 
 RUN addgroup --system dubss && adduser --system --ingroup dubss dubss
 
-COPY --from=builder /app/public        ./public
-COPY --from=builder /app/.next/standalone  ./
-COPY --from=builder /app/.next/static  ./.next/static
+COPY --from=builder --chown=dubss:dubss /app/public ./public
+COPY --from=builder --chown=dubss:dubss /app/.next/standalone ./
+COPY --from=builder --chown=dubss:dubss /app/.next/static ./.next/static
 
-RUN chown -R dubss:dubss /app
 USER dubss
-
 EXPOSE 3000
-ENV PORT=3000
-
 CMD ["node", "server.js"]

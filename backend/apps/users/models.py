@@ -77,6 +77,13 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
     fcm_token       = models.CharField(max_length=255, blank=True,
                                        verbose_name="token FCM (push notifications)")
 
+    # WhatsApp: número en formato internacional sin «+» y consentimiento EXPRESO de la propia persona.
+    whatsapp        = models.CharField(max_length=15, blank=True, default="",
+                                       verbose_name="número de WhatsApp")
+    acepta_whatsapp = models.BooleanField(default=False, verbose_name="acepta avisos por WhatsApp")
+    whatsapp_aceptado_en = models.DateTimeField(null=True, blank=True,
+                                                verbose_name="fecha en que aceptó los avisos por WhatsApp")
+
     objects = UsuarioManager()
 
     USERNAME_FIELD  = "email"
@@ -86,6 +93,11 @@ class Usuario(AbstractBaseUser, PermissionsMixin):
         verbose_name        = "Usuario"
         verbose_name_plural = "Usuarios"
         ordering            = ["apellido", "nombre"]
+        constraints = [
+            # Un número identifica a una sola cuenta: así un mensaje entrante nunca se atribuye a otra persona.
+            models.UniqueConstraint(fields=["whatsapp"], condition=~models.Q(whatsapp=""),
+                                    name="usuario_whatsapp_unico"),
+        ]
 
     def __str__(self):
         return f"{self.nombre} {self.apellido} <{self.email}>"

@@ -18,7 +18,9 @@ const ACCESS_MINUTOS_MAX = 60;
 const baseCookie = {
   httpOnly: true,
   sameSite: "lax" as const,
-  secure: process.env.NODE_ENV === "production",
+  // «Secure» solo viaja por https. En producción real siempre; para probar la app Android por http (red local) se
+  // apaga con COOKIE_SECURE=false (docker-compose.rapido.yml lo hace). Nunca apagarlo en un servidor público.
+  secure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === "true" : process.env.NODE_ENV === "production",
   path: "/",
 };
 
@@ -32,11 +34,22 @@ export function borrarTokens(res: NextResponse) {
   res.cookies.set(REFRESH_COOKIE, "", { ...baseCookie, maxAge: 0 });
 }
 
-/** IP del visitante para que el límite de intentos de Django no cuente a todos como una sola. */
+/**
+ * Datos del visitante que Django necesita aunque la llamada salga de Next por la red interna:
+ *  - IP real, para que el límite de intentos de acceso no cuente a todos como una sola.
+ *  - Host y protocolo PÚBLICOS, para que Django arme bien las URLs absolutas (fotos y logos) en lugar de
+ *    «http://backend:8000/...», que el navegador no puede abrir.
+ * Detrás de Caddy llegan en X-Forwarded-*; Caddy descarta lo que mande el cliente. Next 15 quitó `req.ip`.
+ */
 export function cabecerasDeOrigen(req: NextRequest): Record<string, string> {
-  const previa = req.headers.get("x-forwarded-for");
-  const ip = req.ip ?? previa?.split(",")[0]?.trim();
-  return ip ? { "X-Forwarded-For": ip } : {};
+  const cab: Record<string, string> = {};
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? req.headers.get("x-real-ip");
+  if (ip) cab["X-Forwarded-For"] = ip;
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host");
+  if (host) cab["X-Forwarded-Host"] = host;
+  const proto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(":", "");
+  if (proto) cab["X-Forwarded-Proto"] = proto;
+  return cab;
 }
 
 export async function renovarTokens(refresh: string): Promise<{ access: string; refresh: string } | null> {

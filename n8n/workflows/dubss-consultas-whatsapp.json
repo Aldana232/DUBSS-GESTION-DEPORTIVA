@@ -1,0 +1,338 @@
+{
+  "name": "DUBSS - Consultas por WhatsApp",
+  "nodes": [
+    {
+      "id": "m-get",
+      "name": "Verificación de Meta (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "whatsapp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "dubss-whatsapp-get"
+    },
+    {
+      "id": "m-chk",
+      "name": "Comprobar token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Meta verifica el webhook con GET ?hub.mode=subscribe&hub.verify_token=...&hub.challenge=...\nconst q = $input.first().json.query || {};\nconst ok = q['hub.mode'] === 'subscribe' && !!$env.WHATSAPP_VERIFY_TOKEN && q['hub.verify_token'] === $env.WHATSAPP_VERIFY_TOKEN;\nreturn [{ json: { ok, challenge: ok ? String(q['hub.challenge'] || '') : '' } }];"
+      }
+    },
+    {
+      "id": "m-resp-get",
+      "name": "Devolver challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.ok ? $json.challenge : 'token inválido' }}",
+        "options": {
+          "responseCode": "={{ $json.ok ? 200 : 403 }}"
+        }
+      }
+    },
+    {
+      "id": "m-post",
+      "name": "Mensaje entrante (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        260
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "dubss-whatsapp-post"
+    },
+    {
+      "id": "m-200",
+      "name": "Responder 200 a Meta",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        220,
+        260
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { recibido: true } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "m-ext",
+      "name": "Extraer mensaje y firmar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        440,
+        260
+      ],
+      "parameters": {
+        "jsCode": "// Extrae el mensaje de texto del formato de Meta e ignora todo lo demás (estados de entrega, imágenes...).\nconst cuerpo = $input.first().json.body || {};\nconst m = (((cuerpo.entry || [])[0] || {}).changes || [])[0]?.value?.messages?.[0];\nif (!m || m.type !== 'text') return [];\nconst texto = String((m.text && m.text.body) || '').slice(0, 200);\nconst crypto = require('crypto');\nconst secreto = $env.DUBSS_SECRETO || '';\nconst marca = String(Math.floor(Date.now() / 1000));\nconst cuerpoDubss = JSON.stringify({ whatsapp: m.from, texto });\nconst firma = 'sha256=' + crypto.createHmac('sha256', secreto).update(marca + '.' + cuerpoDubss).digest('hex');\nreturn [{ json: { from: m.from, cuerpoDubss, marca, firma, real: !!$env.WHATSAPP_TOKEN && !!$env.WHATSAPP_PHONE_ID } }];"
+      },
+      "executeOnce": false
+    },
+    {
+      "id": "m-dubss",
+      "name": "Consultar a DUBSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        260
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DUBSS_API }}/integraciones/whatsapp/mensaje/",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-DUBSS-Timestamp",
+              "value": "={{ $json.marca }}"
+            },
+            {
+              "name": "X-DUBSS-Signature",
+              "value": "={{ $json.firma }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.cuerpoDubss }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 1500
+    },
+    {
+      "id": "m-pack",
+      "name": "Armar respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        260
+      ],
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst from = $('Extraer mensaje y firmar').first().json;\nreturn [{ json: { to: from.from, texto: String(r.respuesta || '').slice(0, 1500), real: from.real } }];"
+      }
+    },
+    {
+      "id": "m-real",
+      "name": "¿Hay credenciales de WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        260
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "m-c-real",
+              "leftValue": "={{ $json.real }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "m-wa",
+      "name": "Responder por WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WHATSAPP_API_BASE }}/{{ $env.WHATSAPP_PHONE_ID }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.WHATSAPP_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $json.to, type: 'text', text: { body: $json.texto } }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "m-sim",
+      "name": "Registrar (modo simulado)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        380
+      ],
+      "parameters": {
+        "jsCode": "const x = $input.first().json;\nconsole.log('[DUBSS][simulado] Respuesta a ' + (x.to || '?') + ': ' + (x.texto || ''));\nreturn $input.all().map((i) => ({ json: { simulado: true } }));"
+      }
+    }
+  ],
+  "connections": {
+    "Verificación de Meta (GET)": {
+      "main": [
+        [
+          {
+            "node": "Comprobar token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comprobar token": {
+      "main": [
+        [
+          {
+            "node": "Devolver challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mensaje entrante (POST)": {
+      "main": [
+        [
+          {
+            "node": "Responder 200 a Meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder 200 a Meta": {
+      "main": [
+        [
+          {
+            "node": "Extraer mensaje y firmar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer mensaje y firmar": {
+      "main": [
+        [
+          {
+            "node": "Consultar a DUBSS",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar a DUBSS": {
+      "main": [
+        [
+          {
+            "node": "Armar respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Armar respuesta": {
+      "main": [
+        [
+          {
+            "node": "¿Hay credenciales de WhatsApp?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay credenciales de WhatsApp?": {
+      "main": [
+        [
+          {
+            "node": "Responder por WhatsApp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar (modo simulado)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "id": "dubss-whatsapp-consultas",
+  "versionId": "1"
+}

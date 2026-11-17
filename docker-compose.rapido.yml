@@ -14,5 +14,7 @@ services:
     command: sh -c "[ -f .next/BUILD_ID ] || npm run build; npm run start"
     environment:
       - WATCHPACK_POLLING=false
+      # Pruebas por http (celular en la red local / app Android): las cookies de sesión no pueden ser «Secure».
+      - COOKIE_SECURE=false
   backend:
     command: python manage.py runserver 0.0.0.0:8000 --noreload

@@ -142,7 +142,13 @@ export default function LoginPage() {
               Ver campeonatos y resultados públicos
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
             </Link>
-            <p className="mt-6 text-center text-xs text-ink-400">¿Problemas para ingresar? Contacta al administrador de la DUBSS.</p>
+            <p className="mt-6 text-center text-xs text-ink-500">
+              Al ingresar usarás cookies necesarias para mantener tu sesión. Revisa los{" "}
+              <Link href="/terminos" className="font-medium text-brand-700 underline">Términos y condiciones</Link>, la{" "}
+              <Link href="/privacidad" className="font-medium text-brand-700 underline">Política de privacidad</Link> y la{" "}
+              <Link href="/cookies" className="font-medium text-brand-700 underline">Política de cookies</Link>. La primera vez te pediremos aceptarlos.
+            </p>
+            <p className="mt-3 text-center text-xs text-ink-400">¿Problemas para ingresar? Contacta al administrador de la DUBSS.</p>
           </div>
         </div>
       </main>

@@ -1,0 +1,11 @@
+# Nada de esto debe entrar a la imagen de producción (se instala y se compila dentro de Docker)
+.git
+.env
+.env.*
+node_modules/
+.next/
+out/
+npm-debug.log*
+tsconfig.tsbuildinfo
+Dockerfile*
+*.md

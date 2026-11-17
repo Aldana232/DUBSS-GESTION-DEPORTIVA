@@ -18,11 +18,12 @@ const esquema = z.object({
   posicion: z.string().trim().min(2, "Ingresa la posición."),
   numero_camiseta: z.preprocess((v) => (v === "" || v == null || Number.isNaN(v) ? null : v), z.coerce.number().int().min(0, "Mínimo 0.").max(99, "Máximo 99.").nullable()),
 });
-type Datos = z.infer<typeof esquema>;
+type Datos = z.output<typeof esquema>;
+type Entrada = z.input<typeof esquema>;      // con zod 4 los campos «coerce» entran como `unknown`
 const CAMPOS = ["nombre", "apellido", "carnet", "registro", "posicion", "numero_camiseta", "equipo", "detail", "non_field_errors"] as const;
 
 function ModalJugador({ equipoId, jugador, onCerrar }: { equipoId: number; jugador?: Jugador; onCerrar: () => void }) {
-  const { register, handleSubmit, setError, formState: { errors } } = useForm<Datos>({
+  const { register, handleSubmit, setError, formState: { errors } } = useForm<Entrada, unknown, Datos>({
     resolver: zodResolver(esquema),
     defaultValues: { nombre: jugador?.nombre ?? "", apellido: jugador?.apellido ?? "", carnet: jugador?.carnet ?? "", registro: jugador?.registro ?? "", posicion: jugador?.posicion ?? "", numero_camiseta: jugador?.numero_camiseta ?? null },
   });

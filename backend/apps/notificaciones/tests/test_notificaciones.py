@@ -168,10 +168,13 @@ def test_el_envio_masivo_no_alcanza_a_cuentas_jugador_ni_superadmin():
 def test_canales_informa_que_esta_configurado(settings):
     esc = crear_escenario(equipos=2, canchas=1)
     settings.FCM_CREDENTIALS_FILE = ""
+    settings.N8N_URL_EVENTOS = settings.N8N_SECRETO = ""
 
     r = esc.client.get(reverse("notificacion-canales"))
 
-    assert r.data == {"push": False, "email": True}
+    assert r.data == {"push": False, "email": True, "whatsapp": False}
+    settings.N8N_URL_EVENTOS, settings.N8N_SECRETO = "http://n8n:5678/webhook/x", "secreto"
+    assert esc.client.get(reverse("notificacion-canales")).data["whatsapp"] is True
 
 
 # ── Recordatorios de partido (idempotentes) ───────────────────────────────────
@@ -251,4 +254,6 @@ def test_la_tarea_esta_programada_en_el_calendario_de_celery(settings):
     tareas = {v["task"] for v in settings.CELERY_BEAT_SCHEDULE.values()}
     assert tareas == {"notificaciones.enviar_recordatorios", "ml.actualizar_riesgo_climatico",
                       "fixture.reconstruir_historial", "ml.reentrenar_modelos", "agente.expirar_acciones",
-                      "fixture.purgar_operaciones_idempotentes", "ml.revisar_resultados_atipicos"}
+                      "fixture.purgar_operaciones_idempotentes", "ml.revisar_resultados_atipicos",
+                      "integraciones.despachar_eventos", "integraciones.purgar_eventos",
+                      "notificaciones.purgar_bandeja"}

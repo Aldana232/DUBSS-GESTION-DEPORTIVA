@@ -1,0 +1,56 @@
+# Caddy: HTTPS automático (certificados de Let's Encrypt), compresión y cabeceras de seguridad.
+# SITE_ADDRESS y ADMIN_URL llegan como variables de entorno desde compose.yaml.
+#   SITE_ADDRESS=https://dubss.ejemplo.bo   -> HTTPS automático + redirección desde http
+#   SITE_ADDRESS=http://localhost           -> solo para PROBAR en una PC (sin HTTPS)
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Subidas de hasta 25 MB (fotos, audio del asistente)
+	request_body {
+		max_size 25MB
+	}
+
+	@https protocol https
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		# La grabación de voz del asistente necesita el micrófono; todo lo demás queda bloqueado.
+		Permissions-Policy "camera=(), geolocation=(), microphone=(self)"
+		-Server
+	}
+	header @https Strict-Transport-Security "max-age=31536000"
+
+	# Archivos estáticos del panel de administración (reunidos por collectstatic)
+	handle /static/* {
+		root * /srv
+		header Cache-Control "public, max-age=2592000, immutable"
+		file_server
+	}
+
+	# Fotos y logos subidos (públicos, igual que en desarrollo)
+	handle /media/* {
+		root * /srv
+		header Cache-Control "public, max-age=604800"
+		file_server
+	}
+
+	# Panel de administración de Django, en una ruta configurable (ADMIN_URL)
+	@admin path /{$ADMIN_URL}*
+	handle @admin {
+		reverse_proxy backend:8000
+	}
+
+	# Webhook de WhatsApp (Meta). SOLO esta ruta de n8n es pública; el editor de n8n nunca se expone.
+	@whatsapp path /webhook/whatsapp /webhook/whatsapp/*
+	handle @whatsapp {
+		reverse_proxy n8n:5678
+	}
+
+	# Todo lo demás es la aplicación web. La API de Django NO es pública: solo Next.js habla con ella.
+	handle {
+		reverse_proxy frontend:3000
+	}
+}

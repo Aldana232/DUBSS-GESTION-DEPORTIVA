@@ -6,22 +6,9 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { useApi, useCampeonatos, usePartidos } from "@/lib/hooks/queries";
 import { inscripcionService, quejaService } from "@/lib/api/services";
 import { fechaDia, hora } from "@/lib/utils";
+import { Indicador, saludo } from "@/components/dashboard/Indicador";
 import { AccionesSugeridas, PartidosHoy, ResumenTemporada } from "@/components/dashboard/PanelesInteligentes";
 
-function Indicador({ icono: Icono, etiqueta, valor, href }: { icono: LucideIcon; etiqueta: string; valor: number | string; href: string }) {
-  return (
-    <Link href={href} className="block rounded-xl focus-visible:ring-offset-ink-50">
-      <Card className="transition-shadow hover:shadow-pop">
-        <CardBody className="flex flex-col items-start gap-3 p-4 sm:flex-row sm:items-center sm:gap-4 sm:p-5">
-          <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><Icono className="h-6 w-6" aria-hidden="true" /></span>
-          <div><p className="text-sm text-ink-500">{etiqueta}</p><p className="text-2xl font-bold tabular-nums text-ink-900">{valor}</p></div>
-        </CardBody>
-      </Card>
-    </Link>
-  );
-}
-
-const saludo = () => { const h = new Date().getHours(); return h < 12 ? "Buenos días" : h < 19 ? "Buenas tardes" : "Buenas noches"; };
 
 export default function GestionInicio() {
   const { usuario } = useAuth();

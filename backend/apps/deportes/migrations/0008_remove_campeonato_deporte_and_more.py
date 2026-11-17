@@ -81,7 +81,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="campeonato",
             constraint=models.CheckConstraint(
-                check=models.Q(("min_jugadores__lte", models.F("max_jugadores"))),
+                condition=models.Q(("min_jugadores__lte", models.F("max_jugadores"))),
                 name="campeonato_min_jugadores_lte_max",
             ),
         ),

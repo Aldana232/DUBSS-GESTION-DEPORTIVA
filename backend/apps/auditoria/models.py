@@ -21,6 +21,7 @@ class Bitacora(models.Model):
         EXPORTAR = "EXPORTAR", "Exportar"
         ML_PRED = "ML_PRED", "Predicción ML"
         AGENTE = "AGENTE", "Agente"
+        ACEPTAR_LEGAL = "ACEPTAR_LEGAL", "Aceptación de términos y privacidad"
         ACCESO_DENEGADO = "ACCESO_DENEGADO", "Acceso denegado"
 
     class Resultado(models.TextChoices):

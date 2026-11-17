@@ -13,6 +13,7 @@ from django.db.models import F
 from django.utils import timezone
 from apps.auditoria.models import Bitacora
 from apps.auditoria.services import registrar
+from apps.integraciones.telefono import normalizar_whatsapp
 from .exceptions import ThrottledES
 from .models import Usuario
 from .roles import es_superadmin
@@ -74,23 +75,62 @@ class RestablecerPasswordAdminSerializer(serializers.Serializer):
 class UsuarioSerializer(serializers.ModelSerializer):
     """Datos del perfil propio; los campos de rol y estado son solo lectura."""
     nombre_completo = serializers.CharField(read_only=True)
+    # Verdadero si todavía no aceptó la versión vigente de los Términos y la Política de Privacidad.
+    legal_pendiente = serializers.SerializerMethodField()
+
+    def get_legal_pendiente(self, obj) -> bool:
+        from apps.legal import servicios
+        return servicios.pendiente(obj)
 
     def validate_ci(self, valor):
         # El CI es único: un campo vacío debe guardarse como NULL, no como "".
         return (valor or "").strip() or None
+
+    def validate_whatsapp(self, valor):
+        try:
+            numero = normalizar_whatsapp(valor)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
+        if numero and Usuario.objects.exclude(pk=getattr(self.instance, "pk", None)).filter(whatsapp=numero).exists():
+            raise serializers.ValidationError("Ese número ya está vinculado a otra cuenta.")
+        return numero
+
+    def validate(self, attrs):
+        # El consentimiento es de la propia persona y solo tiene sentido con un número.
+        numero = attrs.get("whatsapp", getattr(self.instance, "whatsapp", ""))
+        if attrs.get("acepta_whatsapp") and not numero:
+            raise serializers.ValidationError({"whatsapp": "Escribe tu número para activar los avisos por WhatsApp."})
+        if not numero:
+            attrs["acepta_whatsapp"] = False
+        return attrs
+
+    def update(self, instance, validated_data):
+        acepta = validated_data.get("acepta_whatsapp")
+        if acepta is not None and acepta != instance.acepta_whatsapp:
+            instance.whatsapp_aceptado_en = timezone.now() if acepta else None
+        if "whatsapp" in validated_data and validated_data["whatsapp"] != instance.whatsapp:
+            # Cambiar de número exige volver a aceptar: el consentimiento era para el número anterior.
+            if "acepta_whatsapp" not in validated_data:
+                validated_data["acepta_whatsapp"] = False
+                instance.whatsapp_aceptado_en = None
+        return super().update(instance, validated_data)
 
     class Meta:
         model  = Usuario
         fields = [
             "id", "email", "nombre", "apellido", "nombre_completo",
             "ci", "telefono", "foto_perfil",
+            "whatsapp", "acepta_whatsapp", "legal_pendiente",
             "rol", "facultad",
             "is_active", "fecha_registro", "ultimo_acceso",
         ]
         read_only_fields = [
-            "id", "email", "rol", "facultad", "is_active",
+            "id", "email", "rol", "facultad", "is_active", "legal_pendiente",
             "fecha_registro", "ultimo_acceso",
         ]
+        # La unicidad del número se valida en validate_whatsapp (mensaje propio y claro).
+        validators = []
+        extra_kwargs = {"whatsapp": {"validators": []}}
 
 
 class UsuarioAdminSerializer(serializers.ModelSerializer):
@@ -106,10 +146,12 @@ class UsuarioAdminSerializer(serializers.ModelSerializer):
         fields = [
             "id", "email", "nombre", "apellido", "nombre_completo",
             "ci", "telefono", "foto_perfil",
+            "whatsapp", "acepta_whatsapp",
             "rol", "facultad",
             "is_active", "fecha_registro", "ultimo_acceso",
         ]
-        read_only_fields = ["id", "email", "fecha_registro", "ultimo_acceso"]
+        # El número y el consentimiento los gestiona solo la propia persona desde su perfil.
+        read_only_fields = ["id", "email", "whatsapp", "acepta_whatsapp", "fecha_registro", "ultimo_acceso"]
 
     def validate(self, attrs):
         request = self.context.get("request")

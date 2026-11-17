@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import { RegistrarServiceWorker } from "@/components/pwa/RegistrarServiceWorker";
+import { AvisoCookies } from "@/components/cookies/AvisoCookies";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className={`${inter.variable} font-sans`}>
         <Providers>{children}</Providers>
         <RegistrarServiceWorker />
+        <AvisoCookies />
       </body>
     </html>
   );

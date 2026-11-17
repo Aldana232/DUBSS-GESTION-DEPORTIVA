@@ -45,6 +45,8 @@ LOCAL_APPS = [
     "apps.quejas",
     "apps.asistente",
     "apps.agente",
+    "apps.integraciones",
+    "apps.legal",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -177,6 +179,9 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "Sistema de Gestión Deportiva DUBSS - UAGRM. API REST documentada con OpenAPI 3.0.",
     "VERSION":     "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # Versión fija de la interfaz (el "@latest" por defecto obliga al CDN a resolver la última cada vez).
+    "SWAGGER_UI_DIST": "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14",
+    "SWAGGER_UI_FAVICON_HREF": "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.17.14/favicon-32x32.png",
     "CONTACT": {"name": "Equipo DUBSS", "email": "dubss@uagrm.edu.bo"},
     "LICENSE": {"name": "MIT"},
     "TAGS": [
@@ -204,6 +209,7 @@ CORS_ALLOW_CREDENTIALS = True
 
 # ─── Email ────────────────────────────────────────────────────────────────────
 EMAIL_BACKEND      = "django.core.mail.backends.smtp.EmailBackend"
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="DUBSS <no-responder@uagrm.edu.bo>")
 EMAIL_HOST         = env("EMAIL_HOST",          default="smtp.gmail.com")
 EMAIL_PORT         = env.int("EMAIL_PORT",      default=587)
 EMAIL_USE_TLS      = env.bool("EMAIL_USE_TLS",  default=True)
@@ -245,10 +251,39 @@ CELERY_BEAT_SCHEDULE = {
     "reconstruir-historial-de-posiciones": {
         "task": "fixture.reconstruir_historial", "schedule": crontab(minute=30, hour=2),
     },
+    "entregar-eventos-a-n8n": {
+        "task": "integraciones.despachar_eventos", "schedule": crontab(minute="*"),
+    },
+    "purgar-eventos-de-integracion": {
+        "task": "integraciones.purgar_eventos", "schedule": crontab(hour=4, minute=0),
+    },
+    "purgar-bandeja-de-notificaciones": {
+        "task": "notificaciones.purgar_bandeja", "schedule": crontab(hour=4, minute=10),
+    },
     "reentrenar-modelos": {
         "task": "ml.reentrenar_modelos", "schedule": crontab(minute=0, hour=3, day_of_week="sunday"),
     },
 }
+
+# ─── Superficie pública ───────────────────────────────────────────────────────
+# Ruta del panel de administración de Django. En producción conviene una ruta difícil de adivinar
+# (ej.: ADMIN_URL=panel-9f3c2a/); además solo entra gente con rol de administrador.
+ADMIN_URL = env("ADMIN_URL", default="admin/").strip("/") + "/"
+# Documentación interactiva de la API (Swagger/ReDoc). En producción está apagada salvo que se pida.
+API_DOCS_ENABLED = env.bool("API_DOCS_ENABLED", default=True)
+
+# ─── Documentos legales ───────────────────────────────────────────────────────
+# Versión de los Términos y la Política de Privacidad (AAAA-MM-DD de su entrada en vigor). Al CAMBIARLA, todas las
+# personas vuelven a ver el cuadro de aceptación en su próximo ingreso. Debe coincidir con frontend/lib/legal.config.ts.
+LEGAL_VERSION = env("LEGAL_VERSION", default="2026-11-15")
+
+# ─── Integración con n8n y WhatsApp ───────────────────────────────────────────
+# Sin URL y secreto la integración queda apagada (no se guarda ningún evento). El secreto firma (HMAC) los
+# mensajes en ambos sentidos: debe ser el mismo que usa n8n (variable DUBSS_SECRETO allí).
+N8N_URL_EVENTOS = env("N8N_URL_EVENTOS", default="")          # ej.: http://n8n:5678/webhook/dubss-eventos
+N8N_SECRETO     = env("N8N_SECRETO", default="")
+INTEGRACION_REINTENTOS_MINUTOS = [1, 5, 15, 60, 180]          # espera tras cada intento fallido; luego FALLIDO
+WHATSAPP_PAIS_DEFECTO = env("WHATSAPP_PAIS_DEFECTO", default="591")   # para móviles de 8 dígitos sin código
 
 # ─── APIs externas ────────────────────────────────────────────────────────────
 GROQ_API_KEY         = env("GROQ_API_KEY",         default="")

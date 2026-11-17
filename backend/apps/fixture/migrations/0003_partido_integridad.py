@@ -66,21 +66,21 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="partido",
             constraint=models.CheckConstraint(
-                check=~Q(equipo_local=F("equipo_visitante")),
+                condition=~Q(equipo_local=F("equipo_visitante")),
                 name="partido_equipos_distintos",
             ),
         ),
         migrations.AddConstraint(
             model_name="partido",
             constraint=models.CheckConstraint(
-                check=Q(duracion_min__gt=0),
+                condition=Q(duracion_min__gt=0),
                 name="partido_duracion_positiva",
             ),
         ),
         migrations.AddConstraint(
             model_name="partido",
             constraint=models.CheckConstraint(
-                check=Q(fecha_hora_fin__gt=F("fecha_hora")),
+                condition=Q(fecha_hora_fin__gt=F("fecha_hora")),
                 name="partido_fin_despues_inicio",
             ),
         ),

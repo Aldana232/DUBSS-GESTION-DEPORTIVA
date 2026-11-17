@@ -121,6 +121,18 @@ class TableroPrediccionesView(APIView):
         return Response(resultado)
 
 
+def _partido_con_equipos(partido_id, *relaciones):
+    """El partido pedido, o la respuesta de error adecuada (404 si no existe, 400 si aún no tiene los dos equipos)."""
+    try:
+        partido = Partido.objects.select_related(*relaciones).get(pk=partido_id)
+    except Partido.DoesNotExist:
+        return None, Response({"error": "Partido no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+    if partido.equipo_local_id is None or partido.equipo_visitante_id is None:
+        return None, Response({"error": "El partido aún no tiene los dos equipos definidos."},
+                              status=status.HTTP_400_BAD_REQUEST)
+    return partido, None
+
+
 # ── CU16 — Predicción individual ───────────────────────────────────────────────
 
 @extend_schema(tags=["ml"])
@@ -140,17 +152,9 @@ class PrediccionPartidoView(APIView):
         return self._predecir(request, partido_id, persistir=True)
 
     def _predecir(self, request, partido_id, *, persistir):
-        try:
-            partido = Partido.objects.select_related(
-                "equipo_local", "equipo_visitante", "campeonato"
-            ).get(pk=partido_id)
-        except Partido.DoesNotExist:
-            return Response({"error": "Partido no encontrado."},
-                            status=status.HTTP_404_NOT_FOUND)
-
-        if partido.equipo_local_id is None or partido.equipo_visitante_id is None:
-            return Response({"error": "El partido aún no tiene los dos equipos definidos."},
-                            status=status.HTTP_400_BAD_REQUEST)
+        partido, error = _partido_con_equipos(partido_id, "equipo_local", "equipo_visitante", "campeonato")
+        if error:
+            return error
 
         pred = PredictorResultados().predecir(partido, persistir=persistir)
         if persistir:
@@ -188,15 +192,9 @@ class RiesgoClimaticoView(APIView):
         return self._consultar(request, partido_id, persistir=True)
 
     def _consultar(self, request, partido_id, *, persistir):
-        try:
-            partido = Partido.objects.select_related("cancha").get(pk=partido_id)
-        except Partido.DoesNotExist:
-            return Response({"error": "Partido no encontrado."},
-                            status=status.HTTP_404_NOT_FOUND)
-
-        if partido.equipo_local_id is None or partido.equipo_visitante_id is None:
-            return Response({"error": "El partido aún no tiene los dos equipos definidos."},
-                            status=status.HTTP_400_BAD_REQUEST)
+        partido, error = _partido_con_equipos(partido_id, "cancha")
+        if error:
+            return error
 
         if not persistir:
             # F6-07: el GET no consulta la red ni escribe; muestra el último pronóstico guardado.
@@ -241,18 +239,9 @@ class PrediccionAsistenciaView(APIView):
         return self._predecir(request, partido_id, persistir=True)
 
     def _predecir(self, request, partido_id, *, persistir):
-        try:
-            partido = Partido.objects.select_related(
-                "equipo_local", "equipo_visitante",
-                "campeonato", "cancha",
-            ).get(pk=partido_id)
-        except Partido.DoesNotExist:
-            return Response({"error": "Partido no encontrado."},
-                            status=status.HTTP_404_NOT_FOUND)
-
-        if partido.equipo_local_id is None or partido.equipo_visitante_id is None:
-            return Response({"error": "El partido aún no tiene los dos equipos definidos."},
-                            status=status.HTTP_400_BAD_REQUEST)
+        partido, error = _partido_con_equipos(partido_id, "equipo_local", "equipo_visitante", "campeonato", "cancha")
+        if error:
+            return error
 
         valores = estimar_asistencia(partido)
         if persistir:

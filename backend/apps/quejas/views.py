@@ -5,6 +5,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 
+from apps.auditoria.mixins import AuditaCrudMixin
 from apps.auditoria.models import Bitacora
 from apps.auditoria.services import registrar
 from apps.users.permissions import (
@@ -32,7 +33,10 @@ class MisQuejasView(generics.ListAPIView):
 
 
 @extend_schema(tags=["quejas"])
-class QuejaViewSet(viewsets.ModelViewSet):
+class QuejaViewSet(AuditaCrudMixin, viewsets.ModelViewSet):
+    auditoria_modulo = "queja"
+    auditoria_textos = {"crear": "Queja o apelación presentada.", "editar": "Queja o apelación actualizada.", "eliminar": "Queja o apelación eliminada."}
+
     queryset = Queja.objects.select_related(
         "delegado", "admin_resuelve", "encuentro__equipo_local", "encuentro__equipo_visitante", "encuentro__campeonato"
     )
@@ -55,39 +59,12 @@ class QuejaViewSet(viewsets.ModelViewSet):
             return queryset.filter(delegado=self.request.user)
         return queryset
 
-    def perform_create(self, serializer):
-        queja = serializer.save()
-        registrar(
-            Bitacora.Accion.CREAR,
-            request=self.request,
-            modulo="queja",
-            objeto_id=queja.pk,
-            descripcion="Queja o apelación presentada.",
-        )
-
-    def perform_update(self, serializer):
-        queja = serializer.save()
+    def completar_edicion(self, queja):
+        # Al resolver o rechazar, queda quién lo hizo y cuándo.
         if queja.estado in (Queja.Estado.RESUELTA, Queja.Estado.RECHAZADA):
             queja.admin_resuelve = self.request.user
             queja.resuelta_en = timezone.now()
             queja.save(update_fields=["admin_resuelve", "resuelta_en"])
-        registrar(
-            Bitacora.Accion.EDITAR,
-            request=self.request,
-            modulo="queja",
-            objeto_id=queja.pk,
-            descripcion="Queja o apelación actualizada.",
-        )
-
-    def perform_destroy(self, instance):
-        registrar(
-            Bitacora.Accion.ELIMINAR,
-            request=self.request,
-            modulo="queja",
-            objeto_id=instance.pk,
-            descripcion="Queja o apelación eliminada.",
-        )
-        instance.delete()
 
     @action(detail=True, methods=["post"])
     def resolver(self, request, pk=None):

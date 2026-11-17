@@ -4,7 +4,7 @@
 # =============================================================================
 
 DC      = docker compose -f docker-compose.dev.yml
-DC_PROD = docker compose -f docker-compose.yml
+DC_PROD = docker compose -f deploy/compose.yaml --project-directory deploy
 BE      = $(DC) exec backend
 FE      = $(DC) exec frontend
 

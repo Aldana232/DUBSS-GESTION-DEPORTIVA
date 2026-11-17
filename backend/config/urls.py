@@ -4,6 +4,8 @@ Rutas principales del proyecto DUBSS.
 """
 from django.contrib import admin
 from django.urls import path, include
+
+from config.health import salud
 from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import (
@@ -16,8 +18,11 @@ from drf_spectacular.views import (
 API_V1 = "api/v1/"
 
 urlpatterns = [
-    # Admin Django
-    path("admin/", admin.site.urls),
+    # Salud del sistema (Docker y monitores)
+    path("api/health/", salud, name="salud"),
+
+    # Admin Django (la ruta sale de ADMIN_URL)
+    path(settings.ADMIN_URL, admin.site.urls),
 
     # ── Módulos de la API ────────────────────────────────────────────────────
     path(API_V1 + "auth/",           include("apps.users.urls.auth_urls")),
@@ -33,12 +38,19 @@ urlpatterns = [
     path(API_V1 + "quejas/",         include("apps.quejas.urls")),
     path(API_V1 + "asistente/",      include("apps.asistente.urls")),
     path(API_V1 + "agente/",         include("apps.agente.urls")),
+    path(API_V1 + "integraciones/",  include("apps.integraciones.urls")),
+    path(API_V1 + "legal/",          include("apps.legal.urls")),
 
-    # ── Swagger / OpenAPI ─────────────────────────────────────────────────────
-    path("api/schema/",         SpectacularAPIView.as_view(),        name="schema"),
-    path("api/docs/",           SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
-    path("api/redoc/",          SpectacularRedocView.as_view(url_name="schema"),   name="redoc"),
+
 ]
+
+# ── Esquema OpenAPI, Swagger y ReDoc (apagados en producción salvo API_DOCS_ENABLED=true) ──
+if settings.API_DOCS_ENABLED:
+    urlpatterns += [
+        path("api/schema/", SpectacularAPIView.as_view(),                     name="schema"),
+        path("api/docs/",   SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+        path("api/redoc/",  SpectacularRedocView.as_view(url_name="schema"),   name="redoc"),
+    ]
 
 # Archivos media en desarrollo
 if settings.DEBUG:

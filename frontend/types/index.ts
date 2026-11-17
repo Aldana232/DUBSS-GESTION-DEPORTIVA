@@ -19,6 +19,9 @@ export interface Usuario {
   ci: string | null;
   telefono: string;
   foto_perfil: string | null;
+  whatsapp: string;
+  acepta_whatsapp: boolean;
+  legal_pendiente: boolean;
   rol: Rol;
   facultad: number | null;
   is_active: boolean;
@@ -367,8 +370,14 @@ export type ResultadoAsistente =
   | { tipo: "estadisticas_equipo"; datos: Record<string, unknown> & { equipo: string; facultad: string; pj: number; pg: number; pe: number; pp: number; gf: number; gc: number; puntos: number } }
   | { tipo: "estadisticas_jugador"; datos: { jugador: string; equipo: string; facultad: string; goles: number; amarillas: number; rojas: number; sancion_pendiente: number } };
 
-export interface CanalesNotificacion { push: boolean; email: boolean }
-export interface ResumenEnvio { mensaje: string; usuarios: number; email: number; push: number; push_configurado: boolean; email_configurado: boolean }
+export interface CanalesNotificacion { push: boolean; email: boolean; whatsapp: boolean }
+export interface ResumenEnvio { mensaje: string; usuarios: number; email: number; push: number; whatsapp: number; push_configurado: boolean; email_configurado: boolean; whatsapp_configurado: boolean }
+export interface EventoIntegracion { id: string; tipo: string; estado: "PENDIENTE" | "ENTREGADO" | "FALLIDO"; intentos: number; error: string; creado: string }
+export interface EstadoIntegracion {
+  configurado: boolean; destino: string; pendientes: number; entregados_24h: number; fallidos: number;
+  usuarios_con_whatsapp: number; ultimos: EventoIntegracion[];
+}
+export interface ResultadoPruebaIntegracion { entregado: boolean; error: string; recibira_whatsapp: boolean }
 export interface EstadisticasFacultad {
   facultad: string; sigla: string; campeonatos: string[];
   totales: { pj: number; pg: number; pe: number; pp: number; gf: number; gc: number; dg: number; equipos: number; jugadores: number; amarillas: number; rojas: number };
@@ -440,3 +449,13 @@ export interface FichaPropia {
   proximos_partidos: { id: number; fecha_hora: string; rival: string; es_local: boolean; cancha: string | null; campeonato: string; jornada: number }[];
   ultimos_resultados: { id: number; fecha_hora: string; rival: string; marcador: string; resultado: "G" | "E" | "P"; campeonato: string }[];
 }
+
+/* ── Bandeja de notificaciones dentro de la app ──────────────────────────────────────────────── */
+export interface Notificacion {
+  id: number; titulo: string; mensaje: string; creada: string; leida: boolean;
+  datos: { partido_id?: number | string; url?: string; [clave: string]: unknown };
+}
+
+/* ── Términos y privacidad ───────────────────────────────────────────────────────────────────── */
+export interface EstadoLegal { version: string; pendiente: boolean; aceptado_en: string | null; documentos: { id: string; titulo: string; ruta: string }[] }
+export interface AceptacionLegalRegistro { documento: string; documento_nombre: string; version: string; aceptado_en: string }

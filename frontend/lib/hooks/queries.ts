@@ -60,7 +60,6 @@ export function useErrorFormulario<T extends FieldValues>(setError: UseFormSetEr
 
 /* ── Lecturas frecuentes ───────────────────────────────────────────────────────────────────── */
 export const useCategorias = () => useApi(["categorias"], () => categoriaService.listar({ activa: true }));
-export const useEquipos = () => useApi(["equipos"], () => equipoService.listar());
 export const useCampeonatos = () => useApi(["campeonatos"], () => campeonatoService.listar({ ordering: "-fecha_inicio" }));
 export const useCampeonato = (id: number) =>
   useApi(["campeonato", id], () => campeonatoService.obtener(id), Number.isFinite(id) && id > 0);

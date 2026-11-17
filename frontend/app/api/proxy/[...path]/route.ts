@@ -5,7 +5,8 @@ import {
 
 export const dynamic = "force-dynamic";
 
-type Contexto = { params: { path: string[] } };
+// Desde Next 15 los parámetros de la ruta llegan como una promesa.
+type Contexto = { params: Promise<{ path: string[] }> };
 
 /**
  * Proxy hacia Django: agrega el Bearer desde la cookie httpOnly y, si el access expiró,
@@ -14,8 +15,9 @@ type Contexto = { params: { path: string[] } };
  * la parte pública del sitio siga funcionando.
  */
 async function reenviar(req: NextRequest, { params }: Contexto) {
+  const { path } = await params;
   const barra = req.nextUrl.pathname.endsWith("/") ? "/" : "";
-  const destino = `${API_URL}/${params.path.join("/")}${barra}${req.nextUrl.search}`;
+  const destino = `${API_URL}/${path.join("/")}${barra}${req.nextUrl.search}`;
   const esLectura = ["GET", "HEAD"].includes(req.method);
   const cuerpo = esLectura ? undefined : await req.arrayBuffer();
 

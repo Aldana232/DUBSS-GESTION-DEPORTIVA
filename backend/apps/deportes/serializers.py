@@ -4,6 +4,8 @@ Serializers para Deporte, Categoria, Campeonato, Equipo, FichaJugador.
 """
 from django.utils import timezone
 from rest_framework import serializers
+
+from config.validadores import RangoPosteriorMixin
 from apps.users.serializers import UsuarioResumenSerializer
 from apps.users.roles import es_delegado
 from .models import (
@@ -20,20 +22,11 @@ class FacultadSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
 
-class RestriccionHorarioFacultadSerializer(serializers.ModelSerializer):
+class RestriccionHorarioFacultadSerializer(RangoPosteriorMixin, serializers.ModelSerializer):
     class Meta:
         model = RestriccionHorarioFacultad
         fields = ["id", "facultad", "dia_semana", "hora_inicio", "hora_fin", "motivo"]
         read_only_fields = ["id"]
-
-    def validate(self, attrs):
-        inicio = attrs.get("hora_inicio", getattr(self.instance, "hora_inicio", None))
-        fin = attrs.get("hora_fin", getattr(self.instance, "hora_fin", None))
-        if inicio is not None and fin is not None and fin <= inicio:
-            raise serializers.ValidationError(
-                {"hora_fin": "La hora de fin debe ser posterior al inicio."}
-            )
-        return attrs
 
 
 class DeporteSerializer(serializers.ModelSerializer):

@@ -44,7 +44,7 @@ class RestriccionHorarioFacultad(models.Model):
         ordering = ["facultad", "dia_semana", "hora_inicio"]
         constraints = [
             models.CheckConstraint(
-                check=models.Q(hora_fin__gt=models.F("hora_inicio")),
+                condition=models.Q(hora_fin__gt=models.F("hora_inicio")),
                 name="restriccion_facultad_fin_despues_inicio",
             ),
         ]
@@ -142,7 +142,7 @@ class Campeonato(models.Model):
         ordering            = ["-fecha_inicio"]
         constraints = [
             models.CheckConstraint(
-                check=models.Q(min_jugadores__lte=models.F("max_jugadores")),
+                condition=models.Q(min_jugadores__lte=models.F("max_jugadores")),
                 name="campeonato_min_jugadores_lte_max",
             ),
         ]

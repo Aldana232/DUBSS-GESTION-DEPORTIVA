@@ -6,6 +6,8 @@ import { LogIn, Menu, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { ROLE_HOME } from "@/lib/auth/roles";
+import { BotonCookies } from "@/components/cookies/BotonCookies";
+import { DOCUMENTOS_LEGALES } from "@/lib/legal.config";
 import { Logo } from "./Logo";
 
 const ENLACES = [
@@ -73,8 +75,14 @@ export function PublicShell({ children }: { children: ReactNode }) {
       </main>
 
       <footer className="border-t border-ink-200 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-5 text-xs text-ink-500 sm:flex-row sm:px-6">
-          <p>Dirección Universitaria de Bienestar Social y Salud — U.A.G.R.M.</p>
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-3 px-4 py-5 text-xs text-ink-500 sm:flex-row sm:px-6">
+          <div className="space-y-2 text-center sm:text-left">
+            <p>Dirección Universitaria de Bienestar Social y Salud — U.A.G.R.M.</p>
+            <nav aria-label="Información legal" className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 sm:justify-start">
+              {DOCUMENTOS_LEGALES.map((d) => <Link key={d.ruta} href={d.ruta} className="font-medium text-ink-600 hover:text-brand-700 hover:underline">{d.titulo}</Link>)}
+              <BotonCookies className="font-medium text-ink-600 hover:text-brand-700 hover:underline" />
+            </nav>
+          </div>
           <p className="flex flex-wrap items-center justify-center gap-x-3">
             <span>Santa Cruz de la Sierra, Bolivia</span>
             <Link href="/corporativo" className="font-medium text-brand-700 underline">Sitio corporativo</Link>

@@ -6,8 +6,8 @@ import api from "./client";
 import type {
   Bloqueo, Campeonato, Cancha, Categoria, DatosResultado, Deporte, Elegibilidad, Equipo, Estadisticas,
   Facultad, FilaPosicion, HistorialJornada, HorarioCancha, Incidencia, Inscripcion, Instalacion, Jugador,
-  NuevoCampeonato, Paginado, InformePredictor, RiesgoClima, Asistencia, AccionSugerida, EstadoAsistente, Interpretacion, ResultadoAsistente, CanalesNotificacion, ResumenEnvio, EstadisticasFacultad, EstadoAgente, ConversacionAgente, MensajeAgente, AccionAgente, AnalisisNiveles, AlertaAtipica, FichaPropia, PaquetePlanilla, ResumenGeneracion, CalidadFixture, ModeloAsignacion, PartidoDetalle, PartidoResumen, Prediccion, Queja, RegistroBitacora,
-  RestriccionFacultad, Resultado, Usuario,
+  NuevoCampeonato, Paginado, InformePredictor, RiesgoClima, Asistencia, AccionSugerida, EstadoAsistente, Interpretacion, ResultadoAsistente, CanalesNotificacion, ResumenEnvio, EstadoAgente, ConversacionAgente, MensajeAgente, AccionAgente, AnalisisNiveles, AlertaAtipica, FichaPropia, PaquetePlanilla, ResumenGeneracion, CalidadFixture, ModeloAsignacion, PartidoDetalle, PartidoResumen, Prediccion, Queja, RegistroBitacora,
+  RestriccionFacultad, Resultado, Usuario, EstadoIntegracion, ResultadoPruebaIntegracion, Notificacion, EstadoLegal, AceptacionLegalRegistro,
 } from "@/types";
 
 type Params = Record<string, string | number | boolean | undefined>;
@@ -47,7 +47,7 @@ export const authService = {
 };
 
 export const perfilService = {
-  editar: (datos: Partial<Pick<Usuario, "nombre" | "apellido" | "telefono" | "ci">>) =>
+  editar: (datos: Partial<Pick<Usuario, "nombre" | "apellido" | "telefono" | "ci" | "whatsapp" | "acepta_whatsapp">>) =>
     api.patch<Usuario>("/usuarios/perfil/", datos).then((r) => r.data),
   subirFoto: (archivo: File) => {
     const form = new FormData();
@@ -171,6 +171,30 @@ export const notificacionService = {
     api.post<ResumenEnvio>("/notificaciones/enviar/", datos).then((r) => r.data),
 };
 
+export const legalService = {
+  estado: () => api.get<EstadoLegal>("/legal/estado/").then((r) => r.data),
+  aceptar: (version: string) => api.post<EstadoLegal>("/legal/aceptar/", { version }).then((r) => r.data),
+  historial: () => api.get<AceptacionLegalRegistro[]>("/legal/historial/").then((r) => r.data),
+};
+
+export const bandejaService = {
+  listar: (params?: { no_leidas?: boolean; page?: number }) =>
+    api.get<Paginado<Notificacion>>("/notificaciones/mis/", { params: { no_leidas: params?.no_leidas ? 1 : undefined, page: params?.page } }).then((r) => r.data),
+  resumen: () => api.get<{ no_leidas: number }>("/notificaciones/mis/resumen/").then((r) => r.data),
+  leer: (id: number) => api.post<Notificacion>(`/notificaciones/mis/${id}/leer/`).then((r) => r.data),
+  leerTodas: () => api.post<{ marcadas: number }>("/notificaciones/mis/leer-todas/").then((r) => r.data),
+};
+
+export const pushService = {
+  registrar: (token: string) => api.post("/usuarios/fcm-token/", { fcm_token: token }).then((r) => r.data),
+  quitar: () => api.delete("/usuarios/fcm-token/").then((r) => r.data),
+};
+
+export const integracionService = {
+  estado: () => api.get<EstadoIntegracion>("/integraciones/estado/").then((r) => r.data),
+  probar: (mensaje?: string) => api.post<ResultadoPruebaIntegracion>("/integraciones/prueba/", mensaje ? { mensaje } : {}).then((r) => r.data),
+};
+
 export const asistenteService = {
   estado: () => api.get<EstadoAsistente>("/asistente/estado/").then((r) => r.data),
   transcribir: (audio: Blob) => {
@@ -200,10 +224,6 @@ export const agenteService = {
 
 export const jugadorPanelService = {
   miFicha: () => api.get<{ fichas: FichaPropia[] }>("/deportes/mi-ficha/").then((r) => r.data.fichas),
-};
-
-export const facultadStatsService = {
-  obtener: (id: number) => api.get<EstadisticasFacultad>(`/reportes/facultad/${id}/`).then((r) => r.data),
 };
 
 export type TipoReporte = "campeonato" | "equipo" | "jugador" | "facultad";

@@ -72,3 +72,14 @@ def enviar_recordatorios() -> dict:
             continue
     logger.info("Recordatorios enviados: %s", enviados)
     return {"enviados": enviados}
+
+
+@shared_task(name="notificaciones.purgar_bandeja")
+def purgar_bandeja() -> dict:
+    """La bandeja no crece sin límite: se borran las leídas con más de 30 días y todas las de más de 90."""
+    from apps.notificaciones.models import Notificacion
+
+    ahora = timezone.now()
+    leidas, _ = Notificacion.objects.filter(leida_en__isnull=False, creada__lt=ahora - timedelta(days=30)).delete()
+    viejas, _ = Notificacion.objects.filter(creada__lt=ahora - timedelta(days=90)).delete()
+    return {"leidas": leidas, "viejas": viejas}

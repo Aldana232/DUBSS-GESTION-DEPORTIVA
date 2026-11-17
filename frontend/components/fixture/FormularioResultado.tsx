@@ -7,7 +7,7 @@ import { RECURSOS_PARTIDO, useAccion, useErrorFormulario } from "@/lib/hooks/que
 import { fixtureService } from "@/lib/api/services";
 import type { DatosResultado, PartidoDetalle } from "@/types";
 
-const numero = z.coerce.number({ invalid_type_error: "Ingresa un número." }).int("Debe ser entero.").min(0, "No puede ser negativo.").max(99, "Máximo 99.");
+const numero = z.coerce.number({ error: "Ingresa un número." }).int("Debe ser entero.").min(0, "No puede ser negativo.").max(99, "Máximo 99.");
 const opcional = z.preprocess((v) => (v === "" || v === null || Number.isNaN(v) ? undefined : v), numero.optional());
 
 const esquema = z.object({
@@ -20,7 +20,8 @@ const esquema = z.object({
   observaciones: z.string().max(500, "Máximo 500 caracteres.").optional(),
   motivo: z.string().optional(),
 });
-type Datos = z.infer<typeof esquema>;
+type Datos = z.output<typeof esquema>;
+type Entrada = z.input<typeof esquema>;      // con zod 4 los campos «coerce» entran como `unknown`
 const CAMPOS = ["goles_local", "goles_visitante", "penales_local", "penales_visitante", "ganador_walkover", "observaciones", "motivo", "detail", "non_field_errors"] as const;
 
 export function ModalResultado({ partido, eliminacion, golesIncidencias, abierto, onCerrar }: {
@@ -33,7 +34,7 @@ export function ModalResultado({ partido, eliminacion, golesIncidencias, abierto
 }) {
   const r = partido.resultado;
   const corregir = !!r;
-  const { register, handleSubmit, setError, watch, formState: { errors } } = useForm<Datos>({
+  const { register, handleSubmit, setError, watch, formState: { errors } } = useForm<Entrada, unknown, Datos>({
     resolver: zodResolver(esquema.superRefine((d, ctx) => {
       if (corregir && !d.motivo?.trim()) ctx.addIssue({ code: "custom", path: ["motivo"], message: "Indica el motivo de la corrección." });
       if (d.walkover && !d.ganador_walkover) ctx.addIssue({ code: "custom", path: ["ganador_walkover"], message: "Indica quién gana por W.O." });

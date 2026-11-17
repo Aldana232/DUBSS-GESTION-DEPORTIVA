@@ -12,6 +12,8 @@ import { useAuth } from "@/lib/hooks/useAuth";
 import { authService, perfilService } from "@/lib/api/services";
 import { mensajeDeError } from "@/lib/api/errors";
 import { ROL_ETIQUETA } from "@/lib/auth/roles";
+import { AvisosWhatsApp } from "@/components/perfil/AvisosWhatsApp";
+import { MisAceptaciones } from "@/components/perfil/MisAceptaciones";
 import type { Usuario } from "@/types";
 
 const esquemaDatos = z.object({
@@ -115,6 +117,8 @@ export default function Perfil() {
           </CardBody>
         </Card>
         <Card><CardHeader title="Datos personales" /><CardBody><FormularioDatos usuario={usuario} /></CardBody></Card>
+        <AvisosWhatsApp usuario={usuario} />
+        <MisAceptaciones />
         <Card><CardHeader title="Seguridad" /><CardBody><FormularioClave /></CardBody></Card>
       </div>
     </>

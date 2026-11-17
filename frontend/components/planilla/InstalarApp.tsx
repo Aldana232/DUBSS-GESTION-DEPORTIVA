@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { Download, Share } from "lucide-react";
 import { Hoja } from "@/components/planilla/Hoja";
+import { esAppNativa } from "@/lib/nativo";
 
 interface EventoInstalacion extends Event { prompt: () => Promise<void>; userChoice: Promise<{ outcome: "accepted" | "dismissed" }> }
 
@@ -13,7 +14,8 @@ export function InstalarApp() {
   const [ayuda, setAyuda] = useState(false);
 
   useEffect(() => {
-    setInstalada(window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true);
+    // Dentro de la app Android ya está «instalada»: no se ofrece instalarla otra vez.
+    setInstalada(esAppNativa() || window.matchMedia("(display-mode: standalone)").matches || (navigator as Navigator & { standalone?: boolean }).standalone === true);
     setEsIos(/iphone|ipad|ipod/i.test(navigator.userAgent));
     const antes = (e: Event) => { e.preventDefault(); setEvento(e as EventoInstalacion); };
     const hecha = () => { setInstalada(true); setEvento(null); };

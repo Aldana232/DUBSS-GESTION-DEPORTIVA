@@ -1,52 +1,49 @@
 # ─── Django core ─────────────────────────────────────────────────────────────
-Django==5.0.6
-djangorestframework==3.15.2
-django-cors-headers==4.4.0
-django-filter==24.3
+Django==5.2.19                      # 5.2 es LTS (soporte hasta abril de 2028)
+djangorestframework==3.18.3
+django-cors-headers==4.9.0
+django-filter==26.2
 django-environ==0.11.2
 
 # ─── Base de datos ────────────────────────────────────────────────────────────
 psycopg2-binary==2.9.9
 
 # ─── Autenticación JWT ────────────────────────────────────────────────────────
-djangorestframework-simplejwt==5.3.1
+djangorestframework-simplejwt==5.5.1
 argon2-cffi==23.1.0
 
 # ─── Swagger / OpenAPI ────────────────────────────────────────────────────────
-drf-spectacular==0.27.2
+drf-spectacular==0.30.0
 
 # ─── Servidor WSGI ────────────────────────────────────────────────────────────
-gunicorn==22.0.0
+gunicorn==27.0.1
 python-json-logger==2.0.7
 
 # ─── Imágenes / archivos ──────────────────────────────────────────────────────
-Pillow==10.4.0
+Pillow==13.0.0
 
-# ─── Machine Learning ─────────────────────────────────────────────────────────
-scikit-learn==1.5.1
-pandas==2.2.2
-numpy==2.0.1
-joblib==1.4.2
-# Optimizador del fixture (RF11). Con numpy 2.0.1 y protobuf 5.26.
-ortools==9.11.4210
-protobuf>=5.26,<5.27
+# ─── Machine Learning y optimización ──────────────────────────────────────────
+scikit-learn==1.9.1
+numpy==2.5.5
+joblib==1.6.0
+# Optimizador del fixture (RF11). OR-Tools exige pandas; se queda en la serie 2.x (la 3.x cambia comportamientos).
+ortools==9.15.6755
+pandas>=2.3,<3
+protobuf==6.33.6
 
 # ─── Tareas asíncronas (notificaciones) ───────────────────────────────────────
 celery==5.4.0
+kombu==5.6.2                         # el transporte de Celery; la versión con la que se probó
 redis==5.0.8
-django-celery-beat==2.6.0
+packaging>=24.2                     # lo importa kombu (transporte Redis); sin él Celery no arranca
+django-celery-beat==2.9.0
 
 # ─── APIs externas ────────────────────────────────────────────────────────────
-requests==2.32.3
+requests==2.34.2
 google-auth==2.43.0
-# requests 2.32.3 exige chardet<6; reportlab lo instala sin límite.
-chardet==5.2.0
 groq==0.9.0
 
 # ─── Reportes / exportación ──────────────────────────────────────────────────
 reportlab==4.2.2
+chardet>=5.2,<6                     # lo exige reportlab
 openpyxl==3.1.5
-
-# ─── Utilidades ───────────────────────────────────────────────────────────────
-python-decouple==3.8
-Markdown==3.7

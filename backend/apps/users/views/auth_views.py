@@ -20,6 +20,7 @@ from ..serializers import (
 from ..permissions import EsAdmin, EsCuentaConPanel
 from ..throttles import LoginRateThrottle
 from ..exceptions import ThrottledES
+from ..models import Usuario
 from ..services import invalidar_tokens_usuario
 
 
@@ -88,6 +89,8 @@ class LogoutView(APIView):
             refresh_token = request.data["refresh"]
             token = RefreshToken(refresh_token)
             token.blacklist()
+            # Al cerrar sesión, ese celular deja de recibir los avisos de esta cuenta.
+            Usuario.objects.filter(pk=request.user.pk).update(fcm_token="")
             registrar(
                 Bitacora.Accion.LOGOUT,
                 request=request,

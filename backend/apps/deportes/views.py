@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema
 from django.utils import timezone
 
+from apps.auditoria.mixins import AuditaCrudMixin
 from apps.auditoria.models import Bitacora
 from apps.auditoria.services import registrar
 from apps.users.permissions import (
@@ -185,8 +186,11 @@ class CampeonatoViewSet(viewsets.ModelViewSet):
 
 
 @extend_schema(tags=["equipos"])
-class EquipoViewSet(viewsets.ModelViewSet):
+class EquipoViewSet(AuditaCrudMixin, viewsets.ModelViewSet):
     """CU03 — Inscripción y gestión de equipos."""
+    auditoria_modulo = "equipo"
+    auditoria_textos = {"crear": "Equipo creado.", "editar": "Equipo actualizado.", "eliminar": "Equipo eliminado."}
+
     queryset = Equipo.objects.filter(estado="ACTIVO").select_related(
         "facultad", "delegado"
     ).prefetch_related("jugadores__usuario")
@@ -205,50 +209,23 @@ class EquipoViewSet(viewsets.ModelViewSet):
             return queryset.filter(facultad_id=self.request.user.facultad_id)
         return queryset
 
-    def perform_create(self, serializer):
-        kwargs = {}
+    def datos_al_crear(self):
         if es_delegado(self.request.user):
-            kwargs = {
-                "facultad": self.request.user.facultad,
-                "delegado": self.request.user,
-            }
-        equipo = serializer.save(**kwargs)
-        registrar(
-            Bitacora.Accion.CREAR,
-            request=self.request,
-            modulo="equipo",
-            objeto_id=equipo.pk,
-            descripcion="Equipo creado.",
-        )
-
-    def perform_update(self, serializer):
-        equipo = serializer.save()
-        registrar(
-            Bitacora.Accion.EDITAR,
-            request=self.request,
-            modulo="equipo",
-            objeto_id=equipo.pk,
-            descripcion="Equipo actualizado.",
-        )
-
-    def perform_destroy(self, instance):
-        registrar(
-            Bitacora.Accion.ELIMINAR,
-            request=self.request,
-            modulo="equipo",
-            objeto_id=instance.pk,
-            descripcion="Equipo eliminado.",
-        )
-        instance.delete()
+            return {"facultad": self.request.user.facultad, "delegado": self.request.user}
+        return {}
 
 
 @extend_schema(tags=["inscripciones"])
 class InscripcionViewSet(
+    AuditaCrudMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.CreateModelMixin,
     viewsets.GenericViewSet,
 ):
+    auditoria_modulo = "inscripcion"
+    auditoria_textos = {"crear": "Solicitud de inscripción creada."}
+
     serializer_class = InscripcionSerializer
     queryset = Inscripcion.objects.select_related(
         "campeonato", "equipo", "equipo__facultad", "validado_por"
@@ -268,16 +245,6 @@ class InscripcionViewSet(
         if es_delegado(self.request.user):
             return queryset.filter(equipo__facultad_id=self.request.user.facultad_id)
         return queryset
-
-    def perform_create(self, serializer):
-        inscripcion = serializer.save()
-        registrar(
-            Bitacora.Accion.CREAR,
-            request=self.request,
-            modulo="inscripcion",
-            objeto_id=inscripcion.pk,
-            descripcion="Solicitud de inscripción creada.",
-        )
 
     @extend_schema(summary="Revisar elegibilidad de una inscripción (RF8)")
     @action(detail=True, methods=["get"], permission_classes=[EsAdminUOrganizadorODelegado])
@@ -372,8 +339,11 @@ class InscripcionViewSet(
 
 
 @extend_schema(tags=["equipos"])
-class FichaJugadorViewSet(viewsets.ModelViewSet):
+class FichaJugadorViewSet(AuditaCrudMixin, viewsets.ModelViewSet):
     """CU06 — Ficha de jugadores por equipo."""
+    auditoria_modulo = "ficha_jugador"
+    auditoria_textos = {"crear": "Ficha de jugador creada.", "editar": "Ficha de jugador actualizada.", "eliminar": "Ficha de jugador eliminada."}
+
     queryset = FichaJugador.objects.filter(estado="ACTIVO").select_related(
         "equipo", "usuario"
     )
@@ -389,33 +359,3 @@ class FichaJugadorViewSet(viewsets.ModelViewSet):
         if es_delegado(self.request.user):
             return queryset.filter(equipo__facultad_id=self.request.user.facultad_id)
         return queryset
-
-    def perform_create(self, serializer):
-        ficha = serializer.save()
-        registrar(
-            Bitacora.Accion.CREAR,
-            request=self.request,
-            modulo="ficha_jugador",
-            objeto_id=ficha.pk,
-            descripcion="Ficha de jugador creada.",
-        )
-
-    def perform_update(self, serializer):
-        ficha = serializer.save()
-        registrar(
-            Bitacora.Accion.EDITAR,
-            request=self.request,
-            modulo="ficha_jugador",
-            objeto_id=ficha.pk,
-            descripcion="Ficha de jugador actualizada.",
-        )
-
-    def perform_destroy(self, instance):
-        registrar(
-            Bitacora.Accion.ELIMINAR,
-            request=self.request,
-            modulo="ficha_jugador",
-            objeto_id=instance.pk,
-            descripcion="Ficha de jugador eliminada.",
-        )
-        instance.delete()

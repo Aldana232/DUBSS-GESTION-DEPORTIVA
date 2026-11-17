@@ -2,8 +2,10 @@
 apps/notificaciones/views.py
 CU17 / F6-04 — Envío manual de avisos a usuarios del sistema (correo + push).
 """
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
-from rest_framework import serializers, status
+from rest_framework import generics, serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -11,9 +13,11 @@ from apps.auditoria.models import Bitacora
 from apps.auditoria.services import registrar
 from apps.deportes.models import Facultad
 from apps.notificaciones import fcm
+from apps.integraciones import servicios as integraciones
 from apps.notificaciones.services import email_configurado, notificar_usuarios
 from apps.users.models import Usuario
-from apps.users.permissions import EsAdminUOrganizador
+from apps.notificaciones.models import Notificacion
+from apps.users.permissions import EsAdminUOrganizador, EsCuentaConPanel
 
 ROLES_DESTINO = [Usuario.Rol.ADMIN_DUBSS, Usuario.Rol.ORGANIZADOR, Usuario.Rol.DELEGADO]
 
@@ -68,7 +72,7 @@ class EnviarNotificacionView(APIView):
             Bitacora.Accion.CREAR, request=request, modulo="notificacion",
             descripcion="Aviso enviado a usuarios.",
             detalle={"titulo": d["titulo"], "destinatarios": resumen["usuarios"], "email": resumen["email"],
-                     "push": resumen["push"], "todos": d["todos"], "roles": d["roles"],
+                     "push": resumen["push"], "whatsapp": resumen["whatsapp"], "todos": d["todos"], "roles": d["roles"],
                      "facultad": d["facultad"].pk if d.get("facultad") else None},
         )
         return Response({"mensaje": "Aviso enviado.", **resumen})
@@ -80,4 +84,61 @@ class CanalesView(APIView):
     permission_classes = [EsAdminUOrganizador]
 
     def get(self, request):
-        return Response({"push": fcm.configurado(), "email": email_configurado()})
+        return Response({"push": fcm.configurado(), "email": email_configurado(),
+                         "whatsapp": integraciones.configurado()})
+
+
+# ─── Bandeja personal (dentro de la app) ──────────────────────────────────────
+
+class NotificacionSerializer(serializers.ModelSerializer):
+    leida = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Notificacion
+        fields = ["id", "titulo", "mensaje", "datos", "creada", "leida"]
+
+    def get_leida(self, obj) -> bool:
+        return obj.leida_en is not None
+
+
+@extend_schema(tags=["notificaciones"], responses=NotificacionSerializer(many=True))
+class MisNotificacionesView(generics.ListAPIView):
+    """Las notificaciones del usuario autenticado (nunca las de otro). `?no_leidas=1` filtra las pendientes."""
+    permission_classes = [EsCuentaConPanel]
+    serializer_class = NotificacionSerializer
+
+    def get_queryset(self):
+        qs = Notificacion.objects.filter(usuario=self.request.user)
+        if self.request.query_params.get("no_leidas") in ("1", "true"):
+            qs = qs.filter(leida_en__isnull=True)
+        return qs
+
+
+@extend_schema(tags=["notificaciones"])
+class ResumenNotificacionesView(APIView):
+    """Cantidad de notificaciones sin leer (para la insignia de la campana; se consulta seguido, por eso es liviana)."""
+    permission_classes = [EsCuentaConPanel]
+
+    def get(self, request):
+        return Response({"no_leidas": Notificacion.objects.filter(usuario=request.user, leida_en__isnull=True).count()})
+
+
+@extend_schema(tags=["notificaciones"], request=None)
+class LeerNotificacionView(APIView):
+    permission_classes = [EsCuentaConPanel]
+
+    def post(self, request, pk):
+        n = get_object_or_404(Notificacion, pk=pk, usuario=request.user)      # la de otro usuario da 404, no 403
+        if n.leida_en is None:
+            n.leida_en = timezone.now()
+            n.save(update_fields=["leida_en"])
+        return Response(NotificacionSerializer(n).data)
+
+
+@extend_schema(tags=["notificaciones"], request=None)
+class LeerTodasView(APIView):
+    permission_classes = [EsCuentaConPanel]
+
+    def post(self, request):
+        n = Notificacion.objects.filter(usuario=request.user, leida_en__isnull=True).update(leida_en=timezone.now())
+        return Response({"marcadas": n})

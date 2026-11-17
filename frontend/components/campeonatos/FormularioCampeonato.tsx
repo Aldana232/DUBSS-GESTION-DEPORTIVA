@@ -9,12 +9,12 @@ import { aInputFechaHora, deInputFechaHora } from "@/lib/utils";
 import type { Campeonato } from "@/types";
 
 const entero = (min: number, max: number, texto: string) =>
-  z.coerce.number({ invalid_type_error: "Indica un número." }).int("Debe ser un número entero.").min(min, texto).max(max, texto);
+  z.coerce.number({ error: "Indica un número." }).int("Debe ser un número entero.").min(min, texto).max(max, texto);
 
 const esquema = z
   .object({
     nombre: z.string().trim().min(3, "El nombre debe tener al menos 3 caracteres.").max(200, "Máximo 200 caracteres."),
-    categoria: z.coerce.number({ invalid_type_error: "Selecciona una categoría." }).int().positive("Selecciona una categoría."),
+    categoria: z.coerce.number({ error: "Selecciona una categoría." }).int().positive("Selecciona una categoría."),
     formato: z.enum(["LIGA", "ELIMINACION"]),
     fecha_inicio: z.string().min(1, "Indica la fecha de inicio."),
     fecha_fin: z.string().min(1, "Indica la fecha de fin."),
@@ -30,7 +30,8 @@ const esquema = z
   .refine((d) => d.min_jugadores <= d.max_jugadores, {
     path: ["min_jugadores"], message: "El mínimo no puede superar el máximo.",
   });
-type Datos = z.infer<typeof esquema>;
+type Datos = z.output<typeof esquema>;
+type Entrada = z.input<typeof esquema>;      // con zod 4 los campos «coerce» entran como `unknown`
 const CAMPOS = ["nombre", "categoria", "formato", "fecha_inicio", "fecha_fin", "max_equipos", "min_jugadores", "max_jugadores", "fecha_cierre_inscripcion", "descripcion"] as const;
 
 /** Alta y edición de campeonato. Con `campeonato` edita; sin él, crea. */
@@ -38,7 +39,7 @@ export function ModalCampeonato({ abierto, onCerrar, campeonato, onGuardado }: {
   abierto: boolean; onCerrar: () => void; campeonato?: Campeonato; onGuardado?: (id: number) => void;
 }) {
   const categorias = useCategorias();
-  const { register, handleSubmit, setError, reset, formState: { errors } } = useForm<Datos>({
+  const { register, handleSubmit, setError, reset, formState: { errors } } = useForm<Entrada, unknown, Datos>({
     resolver: zodResolver(esquema),
     defaultValues: campeonato ? {
       nombre: campeonato.nombre, categoria: campeonato.categoria, formato: campeonato.formato,

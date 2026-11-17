@@ -9,6 +9,9 @@ import { Pendientes } from "@/components/planilla/Pendientes";
 import { VistaPartido } from "@/components/planilla/VistaPartido";
 import { Button, PageLoader } from "@/components/ui";
 import { Logo } from "@/components/layout/Logo";
+import { Campana } from "@/components/notificaciones/Campana";
+import { PuertaLegal } from "@/components/legal/PuertaLegal";
+import { RegistrarPush } from "@/components/notificaciones/RegistrarPush";
 import { cn } from "@/lib/utils";
 import { authService } from "@/lib/api/services";
 import { ROLE_HOME, ROLES_GESTION } from "@/lib/auth/roles";
@@ -75,6 +78,7 @@ function Planilla({ usuario, sinConexionInicial }: { usuario: UsuarioLocal; sinC
           </div>
           <EstadoSync onAbrir={() => ir({ nombre: "pendientes" })} />
           <InstalarApp />
+          <Campana modo="hoja" oscura />
           <button type="button" onClick={pedirSalir} aria-label="Cerrar sesión" className="flex h-9 w-9 items-center justify-center rounded-full bg-white/10 ring-1 ring-inset ring-white/25 hover:bg-white/20"><LogOut className="h-4 w-4" aria-hidden="true" /></button>
         </div>
         {!sync.enLinea && (
@@ -82,6 +86,8 @@ function Planilla({ usuario, sinConexionInicial }: { usuario: UsuarioLocal; sinC
         )}
       </header>
 
+      <RegistrarPush />
+      <PuertaLegal enLinea={sync.enLinea} />
       <main className="mx-auto max-w-lg px-4 pb-32 pt-5">
         {vista.nombre === "partidos" && (
           <ListaPartidos paquete={paquete} ops={ops} cargando={cargando} actualizando={actualizando} error={error} enLinea={sync.enLinea}

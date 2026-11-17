@@ -66,3 +66,18 @@ Thumbs.db
 # Credenciales (Firebase, etc.): nunca versionar
 backend/secrets/
 *firebase*adminsdk*.json
+
+# Viven en el repositorio complementario DUBSS-DOCS-MOVIL: nunca se agregan aquí
+/mobile/
+/docs/
+*.apk
+*.aab
+*.jks
+*.keystore
+google-services.json
+*.docx
+
+# Despliegue: secretos y datos locales
+deploy/.env
+deploy/secrets/
+deploy/backups/

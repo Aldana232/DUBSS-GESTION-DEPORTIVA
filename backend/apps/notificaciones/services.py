@@ -11,7 +11,9 @@ import logging
 from django.conf import settings
 from django.core.mail import send_mail
 
+from apps.integraciones import servicios as integraciones
 from apps.notificaciones import fcm
+from apps.notificaciones.models import Notificacion
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +25,25 @@ def email_configurado() -> bool:
 
 def notificar_usuarios(usuarios, titulo: str, mensaje: str, datos: dict | None = None) -> dict:
     """
-    Avisa por correo y por push a los usuarios activos. Devuelve cuántos recibieron cada canal:
-    {"usuarios", "email", "push", "push_configurado", "email_configurado"}.
+    Avisa por correo, por push y por WhatsApp (vía n8n) a los usuarios activos. Devuelve cuántos recibieron
+    cada canal: {"usuarios", "email", "push", "whatsapp", "push_configurado", "email_configurado",
+    "whatsapp_configurado"}. A WhatsApp solo llega quien dio su número y aceptó los avisos.
     """
     destinatarios = {u.pk: u for u in usuarios if u is not None and u.is_active}.values()
-    resumen = {"usuarios": len(destinatarios), "email": 0, "push": 0,
-               "push_configurado": fcm.configurado(), "email_configurado": email_configurado()}
+    resumen = {"usuarios": len(destinatarios), "email": 0, "push": 0, "whatsapp": 0, "bandeja": 0,
+               "push_configurado": fcm.configurado(), "email_configurado": email_configurado(),
+               "whatsapp_configurado": integraciones.configurado()}
     if not destinatarios:
         return resumen
+
+    # Bandeja dentro de la app: siempre, para todos los destinatarios (no depende de ningún servicio externo).
+    try:
+        Notificacion.objects.bulk_create([
+            Notificacion(usuario=u, titulo=titulo[:100], mensaje=mensaje[:500], datos=datos or {}) for u in destinatarios
+        ])
+        resumen["bandeja"] = len(destinatarios)
+    except Exception:  # noqa: BLE001
+        logger.exception("No se pudo guardar la bandeja del aviso '%s'.", titulo)
 
     emails = sorted({u.email for u in destinatarios if u.email})
     if emails and resumen["email_configurado"]:
@@ -49,4 +62,10 @@ def notificar_usuarios(usuarios, titulo: str, mensaje: str, datos: dict | None =
             fcm.limpiar_tokens_invalidos(r["invalidos"])
         except Exception:  # noqa: BLE001
             logger.exception("No se pudo enviar el push '%s'.", titulo)
+
+    try:
+        resumen["whatsapp"] = integraciones.encolar_aviso(destinatarios, titulo, mensaje, datos)
+    except Exception:  # noqa: BLE001
+        # Un fallo del canal WhatsApp nunca debe impedir el correo, el push ni la operación que originó el aviso.
+        logger.exception("No se pudo encolar el aviso de WhatsApp '%s'.", titulo)
     return resumen

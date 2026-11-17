@@ -1,5 +1,5 @@
 {
-  "version": "asignacion-rf-20261031050023",
+  "version": "asignacion-rf-20261117010719",
   "features": [
     "franja_horaria",
     "dia_semana",
@@ -14,23 +14,23 @@
   "muestras": 3112,
   "muestras_reales": 112,
   "muestras_reglas": 3000,
-  "exactitud": 0.9952,
-  "precision": 0.9737,
-  "sensibilidad": 1.0,
-  "f1": 0.9867,
-  "auc": 0.9999,
+  "exactitud": 0.992,
+  "precision": 0.9649,
+  "sensibilidad": 0.991,
+  "f1": 0.9778,
+  "auc": 0.9997,
   "importancias": {
-    "franja_horaria": 0.3338,
-    "dia_semana": 0.0376,
-    "es_fin_de_semana": 0.0275,
-    "dias_desde_ultimo_local": 0.0601,
-    "dias_desde_ultimo_visit": 0.0754,
-    "descanso_minimo": 0.2007,
-    "instalacion_disponible": 0.0301,
-    "conflictos_horario": 0.1708,
-    "holgura_facultad_min": 0.064
+    "franja_horaria": 0.2998,
+    "dia_semana": 0.059,
+    "es_fin_de_semana": 0.034,
+    "dias_desde_ultimo_local": 0.0666,
+    "dias_desde_ultimo_visit": 0.0816,
+    "descanso_minimo": 0.2125,
+    "instalacion_disponible": 0.0257,
+    "conflictos_horario": 0.1509,
+    "holgura_facultad_min": 0.0699
   },
   "etiquetado": "historial real + reglas",
-  "entrenado_en": "2026-10-31T05:00:23.812233+00:00",
+  "entrenado_en": "2026-11-17T01:07:19.470977+00:00",
   "muestras_reales_nuevas": 112
 }

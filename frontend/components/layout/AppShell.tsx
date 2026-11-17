@@ -7,6 +7,12 @@ import { ChevronsLeft, ChevronsRight, Globe, LogOut, Menu, UserCircle, X } from 
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/hooks/useAuth";
 import { NAV_BY_ROLE, ROLE_HOME, ROL_ETIQUETA, itemActivo } from "@/lib/auth/roles";
+import { Campana } from "@/components/notificaciones/Campana";
+import { PuertaLegal } from "@/components/legal/PuertaLegal";
+import { BotonCookies } from "@/components/cookies/BotonCookies";
+import { DOCUMENTOS_LEGALES } from "@/lib/legal.config";
+import { leerConsentimiento, preferenciasPermitidas, EVENTO_CONSENTIMIENTO } from "@/lib/consentimiento";
+import { RegistrarPush } from "@/components/notificaciones/RegistrarPush";
 import { Logo } from "./Logo";
 import { ICONOS } from "./iconos";
 
@@ -128,12 +134,18 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [colapsado, setColapsado] = useState(false);
   const [movil, setMovil] = useState(false);
 
+  // «Menú contraído» es una preferencia OPCIONAL: solo se lee y se guarda si la persona lo permitió en las cookies.
   useEffect(() => {
-    try { setColapsado(localStorage.getItem(LLAVE_COLAPSO) === "1"); } catch { /* sin almacenamiento */ }
+    const leer = () => {
+      try { setColapsado(preferenciasPermitidas() && localStorage.getItem(LLAVE_COLAPSO) === "1"); } catch { /* sin almacenamiento */ }
+    };
+    leer();
+    window.addEventListener(EVENTO_CONSENTIMIENTO, leer);
+    return () => window.removeEventListener(EVENTO_CONSENTIMIENTO, leer);
   }, []);
   const alternar = () => {
     setColapsado((c) => {
-      try { localStorage.setItem(LLAVE_COLAPSO, c ? "0" : "1"); } catch { /* sin almacenamiento */ }
+      try { if (leerConsentimiento()?.preferencias) localStorage.setItem(LLAVE_COLAPSO, c ? "0" : "1"); } catch { /* sin almacenamiento */ }
       return !c;
     });
   };
@@ -210,11 +222,22 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
             <span className="hidden text-sm font-medium text-ink-500 lg:block">Universidad Autónoma Gabriel René Moreno</span>
           </div>
-          <MenuUsuario />
+          <div className="flex items-center gap-1">
+            <Campana />
+            <MenuUsuario />
+          </div>
         </header>
+        <RegistrarPush />
+        <PuertaLegal />
         <main id="contenido" tabIndex={-1} className="mx-auto w-full min-w-0 max-w-6xl px-4 py-6 sm:px-6 lg:py-8">
           {children}
         </main>
+        <footer className="mx-auto w-full max-w-6xl border-t border-ink-200 px-4 py-4 text-xs text-ink-500 sm:px-6">
+          <nav aria-label="Información legal" className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {DOCUMENTOS_LEGALES.map((d) => <Link key={d.ruta} href={d.ruta} className="font-medium text-ink-600 hover:text-brand-700 hover:underline">{d.titulo}</Link>)}
+            <BotonCookies className="font-medium text-ink-600 hover:text-brand-700 hover:underline" />
+          </nav>
+        </footer>
       </div>
     </div>
   );

@@ -1,4 +1,6 @@
 from rest_framework import serializers
+
+from config.validadores import RangoPosteriorMixin
 from .models import Instalacion, Cancha, BloqueoCancha, HorarioCancha
 
 
@@ -29,7 +31,10 @@ class CanchaSerializer(serializers.ModelSerializer):
         read_only_fields = ["id"]
 
 
-class BloqueoSerializer(serializers.ModelSerializer):
+class BloqueoSerializer(RangoPosteriorMixin, serializers.ModelSerializer):
+    rango_inicio, rango_fin = "fecha_inicio", "fecha_fin"
+    rango_mensaje = "La fecha de fin debe ser posterior al inicio."
+
     class Meta:
         model  = BloqueoCancha
         fields = ["id", "cancha", "fecha_inicio", "fecha_fin",
@@ -40,27 +45,9 @@ class BloqueoSerializer(serializers.ModelSerializer):
         validated_data["creado_por"] = self.context["request"].user
         return super().create(validated_data)
 
-    def validate(self, attrs):
-        inicio = attrs.get("fecha_inicio", getattr(self.instance, "fecha_inicio", None))
-        fin = attrs.get("fecha_fin", getattr(self.instance, "fecha_fin", None))
-        if inicio is not None and fin is not None and fin <= inicio:
-            raise serializers.ValidationError(
-                {"fecha_fin": "La fecha de fin debe ser posterior al inicio."}
-            )
-        return attrs
 
-
-class HorarioCanchaSerializer(serializers.ModelSerializer):
+class HorarioCanchaSerializer(RangoPosteriorMixin, serializers.ModelSerializer):
     class Meta:
         model = HorarioCancha
         fields = ["id", "cancha", "dia_semana", "hora_inicio", "hora_fin"]
         read_only_fields = ["id"]
-
-    def validate(self, attrs):
-        inicio = attrs.get("hora_inicio", getattr(self.instance, "hora_inicio", None))
-        fin = attrs.get("hora_fin", getattr(self.instance, "hora_fin", None))
-        if inicio is not None and fin is not None and fin <= inicio:
-            raise serializers.ValidationError(
-                {"hora_fin": "La hora de fin debe ser posterior al inicio."}
-            )
-        return attrs

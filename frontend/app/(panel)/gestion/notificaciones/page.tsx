@@ -1,8 +1,11 @@
 "use client";
 import { useState } from "react";
-import { Mail, Send, Smartphone } from "lucide-react";
+import { Mail, MessageCircle, Send, Smartphone } from "lucide-react";
 import { Badge, Button, Card, CardBody, CardHeader, Checkbox, FormField, Input, PageHeader, Select, Textarea } from "@/components/ui";
 import { useAccion, useApi } from "@/lib/hooks/queries";
+import { useAuth } from "@/lib/hooks/useAuth";
+import { ROLES_ADMIN } from "@/lib/auth/roles";
+import { EstadoWhatsApp } from "@/components/integraciones/EstadoWhatsApp";
 import { facultadService, notificacionService } from "@/lib/api/services";
 import type { ResumenEnvio } from "@/types";
 
@@ -14,6 +17,7 @@ const ROLES = [
 
 /** CU17 — Avisos manuales por correo y notificación push (F6-04). */
 export default function GestionNotificaciones() {
+  const { rol } = useAuth();
   const canales = useApi(["canales-notificacion"], () => notificacionService.canales());
   const facultades = useApi(["facultades"], () => facultadService.listar());
   const [titulo, setTitulo] = useState("DUBSS");
@@ -33,7 +37,7 @@ export default function GestionNotificaciones() {
 
   return (
     <>
-      <PageHeader title="Avisos" description="Envía un mensaje a delegados y personal por correo y notificación en el celular." />
+      <PageHeader title="Avisos" description="Envía un mensaje a delegados y personal por correo, notificación en el celular y WhatsApp." />
       <div className="grid gap-5 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader title="Nuevo aviso" />
@@ -73,11 +77,14 @@ export default function GestionNotificaciones() {
                 <Badge tono={canales.data?.email ? "success" : "warning"}>{canales.data?.email ? "Configurado" : "No configurado"}</Badge></p>
               <p className="flex items-center justify-between gap-2"><span className="inline-flex items-center gap-2"><Smartphone className="h-4 w-4 text-ink-500" aria-hidden="true" />Push (celular)</span>
                 <Badge tono={canales.data?.push ? "success" : "warning"}>{canales.data?.push ? "Configurado" : "No configurado"}</Badge></p>
-              {canales.data && (!canales.data.email || !canales.data.push) && (
+              <p className="flex items-center justify-between gap-2"><span className="inline-flex items-center gap-2"><MessageCircle className="h-4 w-4 text-ink-500" aria-hidden="true" />WhatsApp</span>
+                <Badge tono={canales.data?.whatsapp ? "success" : "warning"}>{canales.data?.whatsapp ? "Configurado" : "No configurado"}</Badge></p>
+              {canales.data && (!canales.data.email || !canales.data.push || !canales.data.whatsapp) && (
                 <p className="text-xs text-ink-500">Un canal no configurado no se usa: el aviso solo sale por los canales activos.</p>
               )}
             </CardBody>
           </Card>
+          {rol && ROLES_ADMIN.includes(rol) && <EstadoWhatsApp />}
           {resumen && (
             <Card>
               <CardHeader title="Último envío" />
@@ -86,6 +93,7 @@ export default function GestionNotificaciones() {
                 <p>Usuarios alcanzados: <strong>{resumen.usuarios}</strong></p>
                 <p>Correos enviados: <strong>{resumen.email}</strong></p>
                 <p>Notificaciones push: <strong>{resumen.push}</strong></p>
+                <p>Mensajes de WhatsApp en cola: <strong>{resumen.whatsapp}</strong></p>
               </CardBody>
             </Card>
           )}

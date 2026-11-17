@@ -84,7 +84,7 @@ class BloqueoCancha(models.Model):
         ordering            = ["fecha_inicio"]
         constraints = [
             models.CheckConstraint(
-                check=models.Q(fecha_fin__gt=models.F("fecha_inicio")),
+                condition=models.Q(fecha_fin__gt=models.F("fecha_inicio")),
                 name="bloqueo_fin_despues_inicio",
             ),
         ]
@@ -120,7 +120,7 @@ class HorarioCancha(models.Model):
         ordering = ["dia_semana", "hora_inicio"]
         constraints = [
             models.CheckConstraint(
-                check=models.Q(hora_fin__gt=models.F("hora_inicio")),
+                condition=models.Q(hora_fin__gt=models.F("hora_inicio")),
                 name="horario_fin_despues_inicio",
             ),
             models.UniqueConstraint(

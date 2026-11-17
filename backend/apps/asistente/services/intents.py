@@ -16,7 +16,6 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
-from django.utils import timezone
 
 from apps.deportes.models import Campeonato, Equipo, FichaJugador
 
@@ -180,7 +179,7 @@ def _campeonato_por_defecto():
     return None
 
 
-def _pregunta(campo: str, opciones: list[dict], por_defecto_ambiguo: bool) -> dict:
+def _pregunta(campo: str, opciones: list[dict]) -> dict:
     if opciones:
         return {"campo": campo, "pregunta": f"Encontré varios {ETIQUETA[campo]}s parecidos. ¿Cuál quieres?", "opciones": opciones}
     return {"campo": campo, "pregunta": f"¿De qué {ETIQUETA[campo]} hablas? Repite la orden diciendo el nombre.",
@@ -227,14 +226,14 @@ def completar(texto: str, proveedor: str, intencion: str | None, formato: str | 
         if obj is not None:
             resultado.parametros[campo] = _opcion(campo, obj)
         elif opciones:
-            resultado.estado, resultado.aclaracion = "aclaracion", _pregunta(campo, opciones, True)
+            resultado.estado, resultado.aclaracion = "aclaracion", _pregunta(campo, opciones)
             return resultado
         elif obligatorio:
             if campo == "campeonato" and (por_defecto := _campeonato_por_defecto()):
                 resultado.parametros[campo] = _opcion(campo, por_defecto)
                 resultado.supuestos.append(f"No indicaste el campeonato: usé «{por_defecto.nombre}», el único vigente.")
             else:
-                resultado.estado, resultado.aclaracion = "aclaracion", _pregunta(campo, [], False)
+                resultado.estado, resultado.aclaracion = "aclaracion", _pregunta(campo, [])
                 return resultado
     if intencion in ("reporte_campeonato",) and resultado.formato is None:
         resultado.formato = "pdf"
@@ -251,5 +250,3 @@ def interpretar_por_reglas(texto: str, previo: dict | None = None, seleccion: di
     return completar(texto, "reglas", intencion, formato, {}, seleccion)
 
 
-def ahora_local():
-    return timezone.localtime(timezone.now())

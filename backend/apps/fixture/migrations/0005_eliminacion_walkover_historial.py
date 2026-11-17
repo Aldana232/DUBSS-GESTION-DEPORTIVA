@@ -123,7 +123,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="resultado",
             constraint=models.CheckConstraint(
-                check=models.Q(
+                condition=models.Q(
                     models.Q(
                         ("penales_local__isnull", True),
                         ("penales_visitante__isnull", True),

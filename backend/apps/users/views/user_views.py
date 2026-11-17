@@ -10,6 +10,7 @@ from drf_spectacular.utils import extend_schema
 from rest_framework.exceptions import PermissionDenied
 from django.db import transaction
 
+from apps.auditoria.mixins import AuditaCrudMixin
 from apps.auditoria.models import Bitacora
 from apps.auditoria.services import registrar
 from ..models import Usuario
@@ -38,8 +39,10 @@ class MiPerfilView(generics.RetrieveUpdateAPIView):
 
 
 @extend_schema(tags=["usuarios"])
-class ListaUsuariosView(generics.ListCreateAPIView):
+class ListaUsuariosView(AuditaCrudMixin, generics.ListCreateAPIView):
     """Lista y crea cuentas — solo Admin DUBSS."""
+    auditoria_modulo = "usuario"
+    auditoria_textos = {"crear": "Cuenta creada por un administrador."}
     permission_classes = [EsAdmin]
     queryset           = Usuario.objects.all().order_by("apellido", "nombre")
     filterset_fields   = ["rol", "facultad", "is_active"]
@@ -49,16 +52,6 @@ class ListaUsuariosView(generics.ListCreateAPIView):
         if self.request.method == "POST":
             return UsuarioAdminCreateSerializer
         return UsuarioAdminSerializer
-
-    def perform_create(self, serializer):
-        usuario = serializer.save()
-        registrar(
-            Bitacora.Accion.CREAR,
-            request=self.request,
-            modulo="usuario",
-            objeto_id=usuario.pk,
-            descripcion="Cuenta creada por un administrador.",
-        )
 
 
 @extend_schema(tags=["usuarios"])
@@ -192,16 +185,31 @@ class MiEquipoView(APIView):
 
 @extend_schema(tags=["usuarios"])
 class ActualizarFCMTokenView(APIView):
-    """Actualiza el token FCM para notificaciones push del usuario."""
+    """
+    Registra (POST) o quita (DELETE) el token de notificaciones push del celular del usuario.
+
+    Un token identifica a UN dispositivo: si se registra para este usuario se retira de cualquier otra cuenta.
+    Sin esto, quien inicia sesión en un celular que antes usó otra persona seguiría haciendo que los avisos de
+    la otra persona le lleguen a este dispositivo.
+    """
     permission_classes = [EsUsuarioOperativo]
 
     def post(self, request):
-        token = request.data.get("fcm_token", "").strip()
+        token = str(request.data.get("fcm_token", "")).strip()
         if not token:
             return Response(
                 {"error": "fcm_token es requerido."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        request.user.fcm_token = token
-        request.user.save(update_fields=["fcm_token"])
+        if len(token) > 255:
+            return Response({"error": "fcm_token no es válido."}, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            Usuario.objects.filter(fcm_token=token).exclude(pk=request.user.pk).update(fcm_token="")
+            request.user.fcm_token = token
+            request.user.save(update_fields=["fcm_token"])
         return Response({"mensaje": "Token FCM actualizado."})
+
+    def delete(self, request):
+        request.user.fcm_token = ""
+        request.user.save(update_fields=["fcm_token"])
+        return Response(status=status.HTTP_204_NO_CONTENT)

@@ -7,3 +7,8 @@
 *.jpg binary
 *.ico binary
 *.joblib binary
+
+# Scripts que corren en Linux: nunca con saltos de línea de Windows
+*.sh text eol=lf
+Caddyfile text eol=lf
+Dockerfile* text eol=lf

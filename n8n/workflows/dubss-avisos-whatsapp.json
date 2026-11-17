@@ -1,0 +1,284 @@
+{
+  "name": "DUBSS - Avisos a WhatsApp",
+  "nodes": [
+    {
+      "id": "n-hook",
+      "name": "Evento de DUBSS",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "dubss-eventos",
+        "responseMode": "responseNode",
+        "options": {
+          "rawBody": true
+        }
+      },
+      "webhookId": "dubss-eventos"
+    },
+    {
+      "id": "n-firma",
+      "name": "Verificar firma",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        200
+      ],
+      "parameters": {
+        "jsCode": "// Verifica la firma HMAC-SHA256 que pone Django (cabeceras X-DUBSS-Timestamp y X-DUBSS-Signature).\n// Se firma \"<marca>.<cuerpo exacto>\"; rechaza firmas incorrectas y mensajes de hace más de 5 minutos.\nconst crypto = require('crypto');\nconst item = $input.first();\nconst cab = item.json.headers || {};\nconst secreto = $env.DUBSS_SECRETO || '';\nconst marca = String(cab['x-dubss-timestamp'] || '');\nconst firma = String(cab['x-dubss-signature'] || '');\nconst cuerpo = await this.helpers.getBinaryDataBuffer(0, 'data');\nconst esperado = 'sha256=' + crypto.createHmac('sha256', secreto).update(marca + '.').update(cuerpo).digest('hex');\nconst a = Buffer.from(esperado), b = Buffer.from(firma);\nconst reciente = Math.abs(Date.now() / 1000 - Number(marca)) <= 300;\nconst valida = !!secreto && a.length === b.length && crypto.timingSafeEqual(a, b) && reciente;\nreturn [{ json: { valida, evento: valida ? item.json.body : null } }];"
+      }
+    },
+    {
+      "id": "n-valida",
+      "name": "¿Firma válida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        440,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c-valida",
+              "leftValue": "={{ $json.valida }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n-ok",
+      "name": "Responder 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        80
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { recibido: true } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "n-no",
+      "name": "Responder 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        660,
+        320
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { error: 'firma inválida' } }}",
+        "options": {
+          "responseCode": 401
+        }
+      }
+    },
+    {
+      "id": "n-prep",
+      "name": "Preparar mensajes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        80
+      ],
+      "parameters": {
+        "jsCode": "// Un elemento por destinatario. El texto se limpia porque WhatsApp no admite saltos de línea ni\n// espacios repetidos dentro de los parámetros de una plantilla.\nconst ev = $input.first().json.evento;\nconst d = ev.datos || {};\nconst limpiar = (t) => String(t || '').replace(/[\\r\\n\\t]+/g, ' ').replace(/ {2,}/g, ' ').trim();\nconst texto = limpiar((d.titulo ? d.titulo + ': ' : '') + (d.mensaje || '')).slice(0, 900);\nconst real = !!$env.WHATSAPP_TOKEN && !!$env.WHATSAPP_PHONE_ID;\nreturn (d.destinatarios || []).map((x) => ({\n  json: { evento: ev.id, tipo: ev.tipo, to: x.whatsapp, nombre: x.nombre, texto, real },\n}));"
+      }
+    },
+    {
+      "id": "n-real",
+      "name": "¿Hay credenciales de WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        80
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c-real",
+              "leftValue": "={{ $json.real }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "n-http",
+      "name": "Enviar por WhatsApp Cloud API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        120
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.WHATSAPP_API_BASE }}/{{ $env.WHATSAPP_PHONE_ID }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.WHATSAPP_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ messaging_product: 'whatsapp', to: $json.to, type: 'template', template: { name: $env.WHATSAPP_PLANTILLA || 'dubss_aviso', language: { code: 'es' }, components: [ { type: 'body', parameters: [ { type: 'text', text: $json.texto } ] } ] } }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "n-sim",
+      "name": "Registrar (modo simulado)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Sin credenciales de WhatsApp el flujo no envía nada: deja constancia para poder probar todo lo demás.\nconst x = $input.first().json;\nconsole.log('[DUBSS][simulado] WhatsApp a ' + x.to + ' (' + x.nombre + '): ' + x.texto);\nreturn $input.all().map((i) => ({ json: { simulado: true, to: i.json.to, texto: i.json.texto } }));"
+      }
+    }
+  ],
+  "connections": {
+    "Evento de DUBSS": {
+      "main": [
+        [
+          {
+            "node": "Verificar firma",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verificar firma": {
+      "main": [
+        [
+          {
+            "node": "¿Firma válida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Firma válida?": {
+      "main": [
+        [
+          {
+            "node": "Responder 200",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Preparar mensajes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder 401",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar mensajes": {
+      "main": [
+        [
+          {
+            "node": "¿Hay credenciales de WhatsApp?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Hay credenciales de WhatsApp?": {
+      "main": [
+        [
+          {
+            "node": "Enviar por WhatsApp Cloud API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Registrar (modo simulado)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "active": false,
+  "id": "dubss-avisos-whatsapp",
+  "versionId": "1"
+}

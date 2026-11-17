@@ -114,5 +114,45 @@ services:
     depends_on:
       - backend
 
+  # n8n: automatiza los avisos por WhatsApp. OPCIONAL (perfil "n8n"):
+  #   docker compose -f docker-compose.dev.yml --profile n8n up -d n8n      Editor: http://localhost:5678
+  # Importa y activa los flujos de ./n8n/workflows al arrancar (el repositorio es la fuente de verdad).
+  n8n:
+    profiles: ["n8n"]
+    image: n8nio/n8n:1.123.27
+    container_name: dubss_n8n_dev
+    restart: unless-stopped
+    # La imagen de n8n tiene su propio entrypoint: se reemplaza para poder importar los flujos antes de arrancar.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - n8n import:workflow --separate --input=/workflows ; n8n update:workflow --all --active=true ; exec n8n start
+    ports:
+      - "5678:5678"
+    environment:
+      - TZ=America/La_Paz
+      - GENERIC_TIMEZONE=America/La_Paz
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - WEBHOOK_URL=http://localhost:5678/
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-}
+      - N8N_SECURE_COOKIE=false
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_PERSONALIZATION_ENABLED=false
+      # Los flujos firman/verifican con crypto y leen estas variables con $env:
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - DUBSS_SECRETO=${N8N_SECRETO:-}
+      - DUBSS_API=http://backend:8000/api/v1
+      - WHATSAPP_TOKEN=${WHATSAPP_TOKEN:-}
+      - WHATSAPP_PHONE_ID=${WHATSAPP_PHONE_ID:-}
+      - WHATSAPP_PLANTILLA=${WHATSAPP_PLANTILLA:-dubss_aviso}
+      - WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-}
+      - WHATSAPP_API_BASE=${WHATSAPP_API_BASE:-https://graph.facebook.com/v21.0}
+    volumes:
+      - n8n_data_dev:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
+
 volumes:
   postgres_data_dev:
+  n8n_data_dev:
